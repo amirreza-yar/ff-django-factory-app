@@ -75,7 +75,7 @@ class StoredFlashing(models.Model):
     tapered = models.BooleanField(default=False)
 
     # Nodes or data
-    nodes = models.JSONField(validators=[validate_nodes], editable=False)
+    nodes = models.JSONField(validators=[validate_nodes])
     total_girth_cached = models.FloatField(default=0)
     @property
     def total_girth(self):
@@ -83,7 +83,7 @@ class StoredFlashing(models.Model):
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     def save(self, *args, **kwargs):
         # Calculate the total girth and save it
         if self.pk is None:
@@ -160,7 +160,7 @@ class Order(models.Model):
 
 class PaymentHistory(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='payment_history')
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment_history')
     
     transaction_id = models.CharField(max_length=255, unique=True)
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
