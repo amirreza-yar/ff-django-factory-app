@@ -1,9 +1,11 @@
 # factory/management/commands/create_demo_data.py
 from django.core.management.base import BaseCommand
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from factory.models import Factory, Staff, Material, MaterialGroup, MaterialVariant, DeliveryMethod
 from django.utils import timezone
 import decimal
+
+User = get_user_model()
 
 class Command(BaseCommand):
     help = "Create demo factory, staff, materials, and delivery methods"
@@ -32,13 +34,12 @@ class Command(BaseCommand):
         # 2. Create Staff
         # -----------------------------
         staff_users = [
-            {'username': 'alice', 'email': 'alice@example.com', 'fullname': 'Alice Smith'},
-            {'username': 'bob', 'email': 'bob@example.com', 'fullname': 'Bob Johnson'},
-            {'username': 'charlie', 'email': 'charlie@example.com', 'fullname': 'Charlie Brown'},
+            {'email': 'alice@example.com', 'fullname': 'Alice Smith'},
+            {'email': 'bob@example.com', 'fullname': 'Bob Johnson'},
+            {'email': 'charlie@example.com', 'fullname': 'Charlie Brown'},
         ]
         for idx, udata in enumerate(staff_users, start=1):
-            user, _ = User.objects.get_or_create(username=udata['username'], defaults={
-                'email': udata['email'],
+            user, _ = User.objects.get_or_create(email=udata['email'], defaults={
                 'first_name': udata['fullname'].split()[0],
                 'last_name': udata['fullname'].split()[1]
             })

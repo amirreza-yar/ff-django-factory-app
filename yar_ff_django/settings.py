@@ -25,7 +25,31 @@ SECRET_KEY = 'django-insecure-f80#2-66b7(&g%ce1!1^od@^wu5$z*ota@@+lsgapk)rs*#&1o
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
+
+AUTH_USER_MODEL = "base.CustomUser"
+
+ACCOUNT_ADAPTER = 'base.adapters.CustomAccountAdapter'
+# Prevent automatic login after successful registration
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = False
+ACCOUNT_LOGIN_ON_REGISTRATION = False
+
+# Make email verification mandatory
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+
+# Require an email address and enforce uniqueness (good practice)
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*', 'first_name*', 'last_name*']
+
+ACCOUNT_EMAIL_CONFIRMATION_HMAC = False
+# ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS = 2
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT = 5
+# ACCOUNT_EMAIL_VERIFICATION_CODE_LENGTH = 6
+
+
+
 
 
 # Application definition
@@ -44,7 +68,9 @@ INSTALLED_APPS = [
     'auth_kit',
     'auth_kit.mfa',
     'drf_spectacular',
-    'factory.apps.FactoryConfig'
+    'factory.apps.FactoryConfig',
+    # 'dashboard.apps.DashboardConfig',
+    'base.apps.BaseConfig',
 ]
 
 
@@ -167,8 +193,9 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# AUTH_KIT = {
+AUTH_KIT = {
     # 'AUTH_TYPE': 'jwt',
     # 'USE_AUTH_COOKIE': True,
     # 'USE_MFA': True,
-# }
+    'SEND_VERIFY_EMAIL_FUNC': 'base.adapters.send_verify_email',
+}

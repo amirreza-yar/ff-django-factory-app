@@ -140,12 +140,12 @@ class Material(models.Model):
         Factory, on_delete=models.CASCADE, related_name="materials", editable=False
     )
 
-    VARIANT_TYPES = [
-        ("color", "Color"),
-        ("thickness", "Thickness"),
-    ]
+    class VariantType(models.TextChoices):
+        COLOR = "color", "Color"
+        THICKNESS = "thickness", "Thickness"
+    
 
-    variant_type = models.CharField(max_length=20, choices=VARIANT_TYPES)
+    variant_type = models.CharField(max_length=20, choices=VariantType.choices, default=VariantType.COLOR)
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -179,6 +179,7 @@ class MaterialGroup(models.Model):
     price_per_100girth = models.DecimalField(max_digits=10, decimal_places=2)
     price_per_crush_fold = models.DecimalField(max_digits=10, decimal_places=2)
     sample_weight = models.DecimalField(max_digits=10, decimal_places=2)
+    sample_weight_sq_meter = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
 
     # def calculate_weight(self, )
 

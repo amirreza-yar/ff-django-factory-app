@@ -12,15 +12,15 @@ from .permissions import DjangoModelPermissionsForAll
 class FactoryViewSet(viewsets.ModelViewSet):
     queryset = Factory.objects.all()
     serializer_class = FactorySerializer
-    permission_classes = [DjangoModelPermissionsForAll]
-    # permission_classes = [permissions.AllowAny]
+    # permission_classes = [DjangoModelPermissionsForAll]
+    permission_classes = [permissions.AllowAny]
 
 
 class StaffViewSet(viewsets.ModelViewSet):
     queryset = Staff.objects.all()
     serializer_class = StaffSerializer
-    permission_classes = [DjangoModelPermissionsForAll]
-    # permission_classes = [permissions.AllowAny]
+    # permission_classes = [DjangoModelPermissionsForAll]
+    permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
         factory_id = self.kwargs.get('factory_pk')

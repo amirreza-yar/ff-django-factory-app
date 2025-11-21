@@ -1,9 +1,11 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
 from rest_framework.reverse import reverse
 from .models import Factory
 
 class APIRootView(APIView):
+    permission_classes = [AllowAny]
     """
     API Root that lists all factory-related routes.
     """
