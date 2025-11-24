@@ -1,10 +1,12 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.db.models import Q, F
 import uuid
+from datetime import timedelta
 
 from factory.models import MaterialVariant
-from .utils import validate_nodes, calculate_total_girth, validate_material_snapshot, generate_six_digit_id
+from .utils import validate_nodes, calculate_total_girth, validate_material_snapshot, generate_six_digit_id, two_days_from_now
 
 import math
 
@@ -18,39 +20,42 @@ class Specification(models.Model):
 
     @property
     def cost(self):
-        mat_group = self.flashing.original_material.group
-        total_girth = math.ceil(self.flashing.total_girth / 100.0)
-        crush_num = int(self.flashing.start_crush_fold) + int(self.flashing.end_crush_fold)
-        fold_num = len(self.flashing.nodes) - 2
+        try:
+            mat_group = self.flashing.original_material.group
+            total_girth = math.ceil(self.flashing.total_girth / 100.0)
+            crush_num = int(self.flashing.start_crush_fold) + int(self.flashing.end_crush_fold)
+            fold_num = len(self.flashing.nodes) - 2
 
-        base_price = mat_group.base_price
-        price_fold = mat_group.price_per_fold * fold_num
-        price_girth = mat_group.price_per_100girth * total_girth
-        price_crush = mat_group.price_per_crush_fold * crush_num
+            base_price = mat_group.base_price
+            price_fold = mat_group.price_per_fold * fold_num
+            price_girth = mat_group.price_per_100girth * total_girth
+            price_crush = mat_group.price_per_crush_fold * crush_num
 
-        c = base_price + price_fold + price_girth + price_crush
+            c = base_price + price_fold + price_girth + price_crush
 
-        # print(
-        #     "calculated prices: ",
-        #     (base_price, mat_group.base_price, 1),
-        #     (price_fold, mat_group.price_per_fold, fold_num),
-        #     (price_girth, mat_group.price_per_100girth, total_girth),
-        #     (price_crush, mat_group.price_per_crush_fold, crush_num),
-        #     (c),
-        #     sep="\n"
-        # )
+            # print(
+            #     "calculated prices: ",
+            #     (base_price, mat_group.base_price, 1),
+            #     (price_fold, mat_group.price_per_fold, fold_num),
+            #     (price_girth, mat_group.price_per_100girth, total_girth),
+            #     (price_crush, mat_group.price_per_crush_fold, crush_num),
+            #     (c),
+            #     sep="\n"
+            # )
 
-        return float(c) * float(self.length / 1000) * float(self.quantity)
+            return float(c) * float(self.length / 1000) * float(self.quantity)
+        except:
+            return 0
 
     def __str__(self):
-        return f"Spec {self.id} for Flashing {self.flashing.flashing_id}"
+        return f"Spec {self.id} for Flashing {self.flashing.id}"
 
 
 class StoredFlashing(models.Model):
     #TODO: The flashing id will be generated on frontend and will be indexed using it,
     #      so I think we need it here to temporary
     # flashing_id = models.CharField(max_length=10, unique=True, primary_key=True)
-    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='flashings', null=True)
+    order = models.ManyToManyField('Order', related_name='flashings')
     client = models.ForeignKey(User, on_delete=models.PROTECT, related_name='flashings')
 
     original_material = models.ForeignKey(
@@ -65,7 +70,7 @@ class StoredFlashing(models.Model):
         blank=True
     )
 
-    # Flashing data/nodes properties here    
+    # Flashing data/nodes properties here
     start_crush_fold = models.BooleanField(default=False)
     end_crush_fold = models.BooleanField(default=False)
     color_side_dir = models.BooleanField(default=False)
@@ -77,7 +82,10 @@ class StoredFlashing(models.Model):
 
     @property
     def total_girth(self):
-        return self.total_girth_cached
+        if self.nodes:
+            return calculate_total_girth(self.nodes)
+        else:
+            return None
 
     @property
     def material_details(self):
@@ -85,6 +93,29 @@ class StoredFlashing(models.Model):
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def is_complete(self):
+        required_fields = [
+            "original_material",
+            "nodes",
+            "total_girth",
+            "specifications",
+        ]
+
+        for field in required_fields:
+            if getattr(self, field) in [None, "", []]:
+                return False
+
+        if not self.specifications.exists():
+            return False
+        
+        try:
+            validate_nodes(self.nodes)
+        except Exception:
+            return False
+
+        return True
 
     def save(self, *args, **kwargs):
         # if self.pk is None:
@@ -100,6 +131,9 @@ class StoredFlashing(models.Model):
             old = type(self).objects.filter(pk=self.pk).values("nodes").first()
             if old and old["nodes"] != self.nodes:
                 self.total_girth_cached = calculate_total_girth(self.nodes)
+        
+        # if self.order and not self.is_complete:
+        #     self.order = None
 
         super().save(*args, **kwargs)
 
@@ -150,25 +184,30 @@ class Order(models.Model):
         DELIVERED = 'delivered', 'Delivered'
         CANCELLED = 'cancelled', 'Cancelled'
 
-    status = models.CharField(max_length=50, choices=OrderStatus.choices, default=OrderStatus.PENDING)
+    status = models.CharField(max_length=50, choices=OrderStatus.choices, default=OrderStatus.PENDING, editable=False)
 
     class DeliveryTypeChoices(models.TextChoices):
         DELIVERY = 'delivery', 'Delivery'
         PICKUP = 'pickup', 'Pickup'
-    delivery_type = models.CharField(max_length=20, choices=DeliveryTypeChoices.choices, default=DeliveryTypeChoices.DELIVERY)
-    delivery_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    estimated_delivery_date = models.DateTimeField(default=2)
+    delivery_type = models.CharField(max_length=20, choices=DeliveryTypeChoices.choices, default=DeliveryTypeChoices.DELIVERY, editable=False)
+    delivery_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0, editable=False)
+    estimated_delivery_date = models.DateField(default=two_days_from_now, editable=False)
 
-    original_address = models.ForeignKey('Address', on_delete=models.PROTECT)
+    original_address = models.ForeignKey('Address', on_delete=models.PROTECT, null=True)
 
     # For now lets use the 'flashing' which is foreign keyed to this order model
     # flashings_data = models.JSONField(editable=False)
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    is_complete = models.BooleanField(default=False)
-
+    updated_at = models.DateTimeField(auto_now=True, editable=False)
+    
+    # @property
+    # def flashings(self):
+    #     return self.flashings
+    
+    @property
+    def is_complete(self):
+        return False
 
     def save(self, *args, **kwargs):
         # Generating 6-digits order id
@@ -177,7 +216,15 @@ class Order(models.Model):
             while Order.objects.filter(id=self.id).exists():
                 self.id = generate_six_digit_id()
 
+        # enforce that all flashings belong to the same client
+        invalid_flashings = self.flashings.exclude(client=self.client)
+        if invalid_flashings.exists():
+            raise ValueError("All flashings must belong to the same client as the order")
+
         super().save(*args, **kwargs)
+        
+
+
 
     def __str__(self):
         return f"Order num: {self.id}"

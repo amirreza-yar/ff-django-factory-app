@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from .serializers import FactorySerializer, MaterialSerializer, Material, StoredFlashing, StoredFlashingSerializer, AddressSerializer, JobReferenceSerializer, JobReference, Address
+from .serializers import FactorySerializer, MaterialSerializer, StoredFlashingSerializer, AddressSerializer, JobReferenceSerializer, OrderSerializer
 
 from rest_framework import generics, permissions, viewsets
 from rest_framework.response import Response
@@ -33,6 +33,9 @@ class StoredFlashingView(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return self.request.user.flashings.all()
+    
+    def perform_create(self, serializer):
+        serializer.save(client_id=self.request.user.id)
 
 
 class JobReferenceView(viewsets.ModelViewSet):
@@ -43,6 +46,9 @@ class JobReferenceView(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return self.request.user.job_references.all()
+    
+    def perform_create(self, serializer):
+        serializer.save(client_id=self.request.user.id)
 
 
 class AddressView(viewsets.ModelViewSet):
@@ -54,6 +60,19 @@ class AddressView(viewsets.ModelViewSet):
     def get_queryset(self):
         job_ref_id = self.kwargs.get('job_ref_pk')
         return self.request.user.job_references.get(id=job_ref_id).addresses.all()
-    
+
     def perform_create(self, serializer):
         serializer.save(job_reference_id=self.kwargs["job_ref_pk"])
+
+
+class OrderView(viewsets.ModelViewSet):
+    serializer_class = OrderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    http_method_names = ['get', 'post', 'patch', 'options']
+    
+    def get_queryset(self):
+        return self.request.user.orders.all()
+    
+    def perform_create(self, serializer):
+        serializer.save(client_id=self.request.user.id)

@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError
 import math
 from random import randint
+from django.utils import timezone
+from datetime import timedelta
 
 def generate_six_digit_id():
     return str(randint(100000, 999999))
@@ -8,7 +10,7 @@ def generate_six_digit_id():
 def validate_nodes(nodes):
     if not nodes:
         return
-    
+
     if not isinstance(nodes, list):
         raise ValidationError("nodes must be a list")
 
@@ -147,3 +149,6 @@ def validate_material_snapshot(data):
             raise ValidationError(
                 f"Invalid type for '{key}'. Expected {expected_types}, got {type(data[key])}."
             )
+            
+def two_days_from_now():
+    return (timezone.now() + timedelta(days=2)).date()
