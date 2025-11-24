@@ -15,25 +15,32 @@ class Specification(models.Model):
 
     quantity = models.IntegerField()
     length = models.FloatField()
-    
+
     @property
     def cost(self):
-        c = 0
-
-        total_girth = self.flashing.total_girth
-
-        print("\n\ntotal girth ceil\n", math.ceil(total_girth))
-        
         mat_group = self.flashing.original_material.group
+        total_girth = math.ceil(self.flashing.total_girth / 100.0)
+        crush_num = int(self.flashing.start_crush_fold) + int(self.flashing.end_crush_fold)
+        fold_num = len(self.flashing.nodes) - 2
+
         base_price = mat_group.base_price
-        price_per_fold = mat_group.price_per_fold
-        price_per_100girth = mat_group.price_per_100girth
-        price_per_crush_fold = mat_group.price_per_crush_fold
-        
-        
-        return c
-    
-    
+        price_fold = mat_group.price_per_fold * fold_num
+        price_girth = mat_group.price_per_100girth * total_girth
+        price_crush = mat_group.price_per_crush_fold * crush_num
+
+        c = base_price + price_fold + price_girth + price_crush
+
+        # print(
+        #     "calculated prices: ",
+        #     (base_price, mat_group.base_price, 1),
+        #     (price_fold, mat_group.price_per_fold, fold_num),
+        #     (price_girth, mat_group.price_per_100girth, total_girth),
+        #     (price_crush, mat_group.price_per_crush_fold, crush_num),
+        #     (c),
+        #     sep="\n"
+        # )
+
+        return float(c) * float(self.length / 1000) * float(self.quantity)
 
     def __str__(self):
         return f"Spec {self.id} for Flashing {self.flashing.flashing_id}"
@@ -71,7 +78,7 @@ class StoredFlashing(models.Model):
     @property
     def total_girth(self):
         return self.total_girth_cached
-    
+
     @property
     def material_details(self):
         pass
@@ -80,9 +87,6 @@ class StoredFlashing(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-
-        print("\nStored flashing saved or updated...\n")
-        
         # if self.pk is None:
         #     print("\nrefereshing Stored flashing material_details snapshot...\n")
         #     self.material_details = self.make_snapshot()
@@ -98,7 +102,7 @@ class StoredFlashing(models.Model):
                 self.total_girth_cached = calculate_total_girth(self.nodes)
 
         super().save(*args, **kwargs)
-        
+
     def make_snapshot(self):
         m = self.original_material
         g = m.group
@@ -153,20 +157,9 @@ class Order(models.Model):
         PICKUP = 'pickup', 'Pickup'
     delivery_type = models.CharField(max_length=20, choices=DeliveryTypeChoices.choices, default=DeliveryTypeChoices.DELIVERY)
     delivery_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    estimated_delivery_date = models.DateTimeField(editable=False)
+    estimated_delivery_date = models.DateTimeField(default=2)
 
-    job_reference_code = models.PositiveIntegerField()
-    job_reference_project_name = models.CharField(max_length=100)
-
-    original_address = models.ForeignKey('JobReference', on_delete=models.PROTECT)
-    address_title = models.CharField(max_length=100)
-    address_streetAddress = models.CharField(max_length=200)
-    address_suburb = models.CharField(max_length=100)
-    address_state = models.CharField(max_length=100)
-    address_postcode = models.PositiveIntegerField()
-
-    recipient_name = models.CharField(max_length=50)
-    recipient_phone = models.CharField(max_length=50)
+    original_address = models.ForeignKey('Address', on_delete=models.PROTECT)
 
     # For now lets use the 'flashing' which is foreign keyed to this order model
     # flashings_data = models.JSONField(editable=False)
@@ -178,6 +171,7 @@ class Order(models.Model):
 
 
     def save(self, *args, **kwargs):
+        # Generating 6-digits order id
         if not self.id:
             self.id = generate_six_digit_id()
             while Order.objects.filter(id=self.id).exists():
@@ -214,13 +208,16 @@ class JobReference(models.Model):
 
     code = models.PositiveIntegerField(max_length=10)
     project_name = models.CharField(max_length=50)
+    
+    class Meta:
+        unique_together = ('client', 'code')
 
 
 class Address(models.Model):
     job_reference = models.ForeignKey(JobReference, on_delete=models.CASCADE, related_name='addresses')
 
     title = models.CharField(max_length=100)
-    streetAddress = models.CharField(max_length=200)
+    street_address = models.CharField(max_length=200)
     suburb = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
     postcode = models.PositiveIntegerField()

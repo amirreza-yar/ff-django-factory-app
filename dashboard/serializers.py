@@ -1,13 +1,20 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator, ValidationError
 
-from .models import StoredFlashing, Specification
+from .models import StoredFlashing, Specification, JobReference, Address
 from factory.models import Factory, Staff, Material, MaterialVariant, MaterialGroup, DeliveryMethod
 
 
 class SpecificationSerializer(serializers.ModelSerializer):
+
+    # cost = serializers.SerializerMethodField()
+    
     class Meta:
         model = Specification
-        fields = ["id", "quantity", "length", "cost"]
+        fields = ["quantity", "length", "cost"]
+
+    # def get_cost(self, obj):
+    #     return obj.cost
 
 
 class StoredFlashingSerializer(serializers.ModelSerializer):
@@ -99,3 +106,47 @@ class MaterialSerializer(serializers.ModelSerializer):
     class Meta:
         model = Material
         fields = ['id', 'name', 'variant_type', 'variants_count', 'variants']
+
+
+class AddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Address
+        fields = [
+            'id',
+            'title',
+            'street_address',
+            'suburb',
+            'state',
+            'postcode',
+            'recipient_name',
+            'recipient_phone',
+        ]
+        
+
+class JobReferenceSerializer(serializers.ModelSerializer):
+
+    addresses = AddressSerializer(many=True, required=False)
+
+    class Meta:
+        model = JobReference
+        fields = ['id', 'code', 'project_name', 'addresses']
+
+    def validate_code(self, value):
+        user = self.context['request'].user
+        if JobReference.objects.filter(client=user, code=value).exists():
+            raise ValidationError("You already have a job reference with this code.")
+        return value
+
+    def create(self, validated_data):
+        user = self.context["request"].user
+        addr_data = validated_data.pop("addresses", None)
+
+        job_reference = JobReference.objects.create(client=user, **validated_data)
+
+        if addr_data is not None:
+            for addr in addr_data:
+                Address.objects.create(
+                    job_reference=job_reference,
+                    **addr
+                )
+        return job_reference
