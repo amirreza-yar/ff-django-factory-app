@@ -1,72 +1,62 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-
-from random import randint
 import uuid
 
 from factory.models import MaterialVariant
-from .utils import validate_nodes, calculate_total_girth
+from .utils import validate_nodes, calculate_total_girth, validate_material_snapshot, generate_six_digit_id
+
+import math
 
 User = get_user_model()
 
-def generate_six_digit_id():
-    return str(randint(100000, 999999))
-
 class Specification(models.Model):
-    id = models.CharField(max_length=10, primary_key=True)
     flashing = models.ForeignKey('StoredFlashing', on_delete=models.CASCADE, related_name='specifications')
 
     quantity = models.IntegerField()
     length = models.FloatField()
-    cost = models.FloatField()
+    
+    @property
+    def cost(self):
+        c = 0
+
+        total_girth = self.flashing.total_girth
+
+        print("\n\ntotal girth ceil\n", math.ceil(total_girth))
+        
+        mat_group = self.flashing.original_material.group
+        base_price = mat_group.base_price
+        price_per_fold = mat_group.price_per_fold
+        price_per_100girth = mat_group.price_per_100girth
+        price_per_crush_fold = mat_group.price_per_crush_fold
+        
+        
+        return c
+    
+    
 
     def __str__(self):
         return f"Spec {self.id} for Flashing {self.flashing.flashing_id}"
 
 
-class MaterialSnapshot(models.Model):
-    original_material = models.ForeignKey(MaterialVariant, on_delete=models.PROTECT, related_name="ordered_flashings")
-    # Snapshot of material on creation time
-    # Something like Stainless Steel, type = thickness,
-    # code/variant_label = SS304-08, thickness/variant_value = 0.8 [mm]
-    class MaterialType(models.TextChoices):
-        COLOR = "color", "Color"
-        THICKNESS = "thickness", "Thickness"
-    variant_type = models.CharField(max_length=20, choices=MaterialType.choices)
-    name = models.CharField(max_length=50)
-    variant_label = models.CharField(max_length=50)
-    variant_value = models.CharField(max_length=50)
-    base_price = models.DecimalField(max_digits=10, decimal_places=2)
-    price_per_fold = models.DecimalField(max_digits=10, decimal_places=2)
-    price_per_100girth = models.DecimalField(max_digits=10, decimal_places=2)
-    price_per_crush_fold = models.DecimalField(max_digits=10, decimal_places=2)
-    sample_weight = models.DecimalField(max_digits=10, decimal_places=2)
-    sample_weight_sq_meter = models.DecimalField(max_digits=5, decimal_places=2)
-
-    def save(self, *args, **kwargs):
-        # Create the material snapshot
-        if self.pk is None:
-            self.variant_type = self.original_material.group.material.variant_type
-            self.name = self.original_material.group.material.name
-            self.variant_label = self.original_material.label
-            self.variant_value = self.original_material.value
-            self.base_price = self.original_material.group.base_price
-            self.price_per_fold = self.original_material.group.price_per_fold
-            self.price_per_100girth = self.original_material.group.price_per_100girth
-            self.price_per_crush_fold = self.original_material.group.price_per_crush_fold
-            self.sample_weight = self.original_material.group.sample_weight
-            self.sample_weight_sq_meter = self.original_material.group.sample_weight_sq_meter
-
-        super().save(*args, **kwargs)
-
 class StoredFlashing(models.Model):
     #TODO: The flashing id will be generated on frontend and will be indexed using it,
     #      so I think we need it here to temporary
-    flashing_id = models.CharField(max_length=10, unique=True, primary_key=True)
-    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='flashings')
+    # flashing_id = models.CharField(max_length=10, unique=True, primary_key=True)
+    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='flashings', null=True)
+    client = models.ForeignKey(User, on_delete=models.PROTECT, related_name='flashings')
 
-    material = models.OneToOneField(MaterialSnapshot, on_delete=models.PROTECT, related_name='flashing')
+    original_material = models.ForeignKey(
+        MaterialVariant,
+        on_delete=models.PROTECT,
+        related_name="ordered_flashings"
+    )
+
+    material_details = models.JSONField(
+        validators=[validate_material_snapshot],
+        null=True,
+        blank=True
+    )
 
     # Flashing data/nodes properties here    
     start_crush_fold = models.BooleanField(default=False)
@@ -75,18 +65,32 @@ class StoredFlashing(models.Model):
     tapered = models.BooleanField(default=False)
 
     # Nodes or data
-    nodes = models.JSONField(validators=[validate_nodes])
+    nodes = models.JSONField(validators=[validate_nodes], blank=True, null=True)
     total_girth_cached = models.FloatField(default=0)
+
     @property
     def total_girth(self):
         return self.total_girth_cached
+    
+    @property
+    def material_details(self):
+        pass
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        # Calculate the total girth and save it
-        if self.pk is None:
+
+        print("\nStored flashing saved or updated...\n")
+        
+        # if self.pk is None:
+        #     print("\nrefereshing Stored flashing material_details snapshot...\n")
+        #     self.material_details = self.make_snapshot()
+        # else:
+        #     # The snapshot updates here (if the material_details have changed)
+        #     pass
+
+        if self.pk is None and self.nodes:
             self.total_girth_cached = calculate_total_girth(self.nodes)
         else:
             old = type(self).objects.filter(pk=self.pk).values("nodes").first()
@@ -94,9 +98,36 @@ class StoredFlashing(models.Model):
                 self.total_girth_cached = calculate_total_girth(self.nodes)
 
         super().save(*args, **kwargs)
+        
+    def make_snapshot(self):
+        m = self.original_material
+        g = m.group
+
+        return {
+            "variant_type": g.material.variant_type,
+            "name": g.material.name,
+            "variant_label": m.label,
+            "variant_value": m.value,
+            "base_price": float(g.base_price),
+            "price_per_fold": float(g.price_per_fold),
+            "price_per_100girth": float(g.price_per_100girth),
+            "price_per_crush_fold": float(g.price_per_crush_fold),
+            "sample_weight": float(g.sample_weight),
+            "sample_weight_sq_meter": float(g.sample_weight_sq_meter),
+        }
+
+    def refresh_material_snapshot(self):
+        new_snapshot = self.make_snapshot()
+
+        if self.material_snapshot != new_snapshot:
+            self.material_snapshot = new_snapshot
+            self.save(update_fields=["material_snapshot", "updated_at"])
+            return True
+
+        return False
 
     def __str__(self):
-        return f"Flashing {self.flashing_id} for Order {self.order.id}"
+        return f"Flashing {self.id} for Order {self.order}"
 
 
 class Order(models.Model):
@@ -161,10 +192,10 @@ class Order(models.Model):
 class PaymentHistory(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment_history')
-    
+
     transaction_id = models.CharField(max_length=255, unique=True)
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
-    
+
     class PaymentMethod(models.TextChoices):
         CARD = 'card', 'Card'
         BANK_TRANSFER = 'bank_transfer', 'Bank Transfer'
@@ -173,14 +204,14 @@ class PaymentHistory(models.Model):
     method = models.CharField(max_length=20, choices=PaymentMethod.choices)
 
     date = models.DateTimeField(default=timezone.now, editable=False)
-    
+
     def __str__(self):
         return f"Payment {self.transaction_id} for Order {self.order.id}"
 
 
 class JobReference(models.Model):
     client = models.ForeignKey(User, on_delete=models.CASCADE, related_name='job_references')
-    
+
     code = models.PositiveIntegerField(max_length=10)
     project_name = models.CharField(max_length=50)
 

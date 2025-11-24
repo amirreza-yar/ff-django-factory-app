@@ -151,10 +151,12 @@ class Material(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
-    def variants_count(self):
-        from .models import MaterialVariant
+    def variants(self):
+        return MaterialVariant.objects.filter(group__material=self)
 
-        return MaterialVariant.objects.filter(group__material=self).count()
+    @property
+    def variants_count(self):
+        return self.variants.count()
 
     def clean(self):
         if self.pk and not self.variant_groups.exists():

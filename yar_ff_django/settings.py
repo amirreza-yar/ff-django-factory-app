@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -69,7 +70,7 @@ INSTALLED_APPS = [
     'auth_kit.mfa',
     'drf_spectacular',
     'factory.apps.FactoryConfig',
-    # 'dashboard.apps.DashboardConfig',
+    'dashboard.apps.DashboardConfig',
     'base.apps.BaseConfig',
 ]
 
@@ -193,9 +194,13 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
+}
+
 AUTH_KIT = {
-    # 'AUTH_TYPE': 'jwt',
-    # 'USE_AUTH_COOKIE': True,
+    'AUTH_TYPE': 'jwt',
+    'USE_AUTH_COOKIE': True,
     # 'USE_MFA': True,
     'SEND_VERIFY_EMAIL_FUNC': 'base.adapters.send_verify_email',
 }

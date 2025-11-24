@@ -9,4 +9,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('factory.urls'), name='factory-api'),
     path('', include('base.urls'), name='base-api'),
+    path('api/d/', include('dashboard.urls'), name='dashboard-api'),
 ]

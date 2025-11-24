@@ -61,33 +61,3 @@ class DeliveryMethodView(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(factory_id=self.kwargs["factory_pk"])
-
-class LoginView(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-
-        user = authenticate(request, username=username, password=password)
-        if user is not None:
-            login(request, user)  # This sets the session cookie
-            return Response({
-                "message": "Login successful",
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name
-                }
-            })
-        else:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
-
-
-class LogoutView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    def post(self, request):
-        logout(request)
-        return Response({"message": "Logged out"})
