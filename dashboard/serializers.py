@@ -1,14 +1,20 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator, ValidationError
 
-from .models import StoredFlashing, Specification, JobReference, Address, Order
-from factory.models import (
-    Factory,
+from .models import (
+    StoredFlashing,
+    Specification,
+    JobReference,
+    Address,
+    Order,
     Staff,
     Material,
     MaterialVariant,
     MaterialGroup,
     DeliveryMethod,
+)
+from factory.models import (
+    Factory,
 )
 
 
@@ -161,13 +167,17 @@ class JobReferenceSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    flashings = serializers.PrimaryKeyRelatedField(many=True, queryset=StoredFlashing.objects.none())
+    flashings = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=StoredFlashing.objects.none()
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request and request.user and request.user.is_authenticated:
-            self.fields['flashings'].queryset = StoredFlashing.objects.filter(client=request.user.id)
+            self.fields["flashings"].queryset = StoredFlashing.objects.filter(
+                client=request.user.id
+            )
 
     class Meta:
         model = Order
@@ -183,7 +193,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "is_complete",
         ]
 
-    read_only_fields = ['id', 'status', 'delivery_cost', 'created_at', 'is_complete']
+    read_only_fields = ["id", "status", "delivery_cost", "created_at", "is_complete"]
 
     def update(self, instance, validated_data):
         # validated_data.pop("delivery_type", None)

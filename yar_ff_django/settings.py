@@ -49,19 +49,20 @@ ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS = 2
 ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT = 5
 # ACCOUNT_EMAIL_VERIFICATION_CODE_LENGTH = 6
 
-
-
-
-
 # Application definition
 
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
+SHARED_APPS = (
+    'django_tenants',                # must always be first
+
+    # Django core (must migrate BEFORE everything else)
     'django.contrib.contenttypes',
+    'django.contrib.auth',
+    'django.contrib.admin',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Third-party libs (shared across all tenants)
     'rest_framework',
     'corsheaders',
     'allauth',
@@ -69,10 +70,20 @@ INSTALLED_APPS = [
     'auth_kit',
     'auth_kit.mfa',
     'drf_spectacular',
-    'factory.apps.FactoryConfig',
-    'dashboard.apps.DashboardConfig',
+
+    # Your shared project apps
+    'factory',
     'base.apps.BaseConfig',
-]
+)
+
+TENANT_APPS = (
+    'dashboard.apps.DashboardConfig',
+)
+
+INSTALLED_APPS = list(SHARED_APPS) + list(TENANT_APPS)
+
+TENANT_MODEL = "factory.Factory"
+TENANT_DOMAIN_MODEL = "factory.Domain"
 
 
 SPECTACULAR_SETTINGS = {
@@ -85,6 +96,8 @@ SPECTACULAR_SETTINGS = {
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 MIDDLEWARE = [
+    'django_tenants.middleware.main.TenantMainMiddleware',
+
     'django.middleware.security.SecurityMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -144,12 +157,29 @@ WSGI_APPLICATION = 'yar_ff_django.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django_tenants.postgresql_backend',
+        'NAME': 'flashing_factory',
+        'USER': 'amirreza',
+        'PASSWORD': '45456006',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
+DATABASE_ROUTERS = (
+    'django_tenants.routers.TenantSyncRouter',
+)
 
 
 # Password validation

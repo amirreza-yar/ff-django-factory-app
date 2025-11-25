@@ -5,12 +5,13 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 import uuid
 import math
+from django_tenants.models import TenantMixin, DomainMixin
 
 
 User = get_user_model()
 
 
-class Factory(models.Model):
+class Factory(TenantMixin):
     # General
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
@@ -59,6 +60,8 @@ class Factory(models.Model):
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    auto_create_schema = True
 
     def __str__(self):
         return self.name
@@ -71,221 +74,8 @@ class Factory(models.Model):
         ]
 
 
-class Staff(models.Model):
-    """Factory staff/operators model"""
-
-    # id = models.UUIDField(primary_key=True, default=uuid.uuid5, editable=False)
-    factory = models.ForeignKey(Factory, on_delete=models.CASCADE, related_name="staff", editable=False)
-    user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name="staff_profile", editable=False
-    )
-
-    # Personal info
-    employee_id = models.CharField(max_length=50, unique=True, editable=False)
-
-    # Employment details
-    class StaffRole(models.TextChoices):
-        OPERATOR = "operator", "Operator"
-        SUPERVISOR = "supervisor", "Supervisor"
-        MANAGER = "manager", "Manager"
-        QA = "qa", "Quality Assurance"
-
-    role = models.CharField(
-        max_length=20, choices=StaffRole.choices, default=StaffRole.OPERATOR
-    )
-
-    class EmploymentStatus(models.TextChoices):
-        ACTIVE = "active", "Active"
-        INACTIVE = "inactive", "Inactive"
-        TERMINATED = "terminated", "Terminated"
-
-    status = models.CharField(
-        max_length=20, choices=EmploymentStatus.choices, default=EmploymentStatus.ACTIVE
-    )
-
-    @property
-    def first_name(self):
-        return self.user.first_name
-
-    @property
-    def last_name(self):
-        return self.user.last_name
-
-    @property
-    def fullname(self):
-        return f"{self.first_name} {self.last_name}"
-
-    @property
-    def email(self):
-        return self.user.email
-
-    @property
-    def factory_name(self):
-        return self.factory.name
-
-    created_at = models.DateTimeField(default=timezone.now, editable=False)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.fullname}"
-
-    class Meta:
-        # ordering = ['last_name', 'first_name']
-        unique_together = ["factory", "employee_id"]
-
-
-class Material(models.Model):
-    name = models.CharField(max_length=50, blank=False, null=False)
-    factory = models.ForeignKey(
-        Factory, on_delete=models.CASCADE, related_name="materials", editable=False
-    )
-
-    class VariantType(models.TextChoices):
-        COLOR = "color", "Color"
-        THICKNESS = "thickness", "Thickness"
-    
-
-    variant_type = models.CharField(max_length=20, choices=VariantType.choices, default=VariantType.COLOR)
-
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    @property
-    def variants(self):
-        return MaterialVariant.objects.filter(group__material=self)
-
-    @property
-    def variants_count(self):
-        return self.variants.count()
-
-    def clean(self):
-        if self.pk and not self.variant_groups.exists():
-            raise ValidationError("Material must have at least one variant group.")
-
-    def __str__(self):
-        return f"{self.name}"
-
-    class Meta:
-        unique_together = ["name"]
-
-
-class MaterialGroup(models.Model):
-    material = models.ForeignKey(
-        Material, on_delete=models.CASCADE, related_name="groups", editable=False
-    )
-
-    name = models.CharField(max_length=50, default="Base Group")
-
-    base_price = models.DecimalField(max_digits=10, decimal_places=2)
-    price_per_fold = models.DecimalField(max_digits=10, decimal_places=2)
-    price_per_100girth = models.DecimalField(max_digits=10, decimal_places=2)
-    price_per_crush_fold = models.DecimalField(max_digits=10, decimal_places=2)
-    sample_weight = models.DecimalField(max_digits=10, decimal_places=2)
-    sample_weight_sq_meter = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
-
-    # def calculate_weight(self, )
-
-    def __str__(self):
-        return f"{self.material.name} - Group #{self.id}"
-
-
-class MaterialVariant(models.Model):
-    group = models.ForeignKey(
-        MaterialGroup, on_delete=models.CASCADE, related_name="variants", editable=False
-    )
-
-    label = models.CharField(max_length=100)
-    value = models.CharField(max_length=100)
-
-    def clean(self):
-        if not self.pk and not self.group_id:
-            raise ValidationError("Variant must belong to a group.")
-
-    def __str__(self):
-        return f"{self.group.material.name} - {self.label}"
-
-
-class DeliveryMethod(models.Model):
-    factory = models.ForeignKey(
-        Factory,
-        on_delete=models.CASCADE,
-        related_name="delivery_methods",
-        editable=False
-    )
-
-    class MethodType(models.TextChoices):
-        FACTORY = "factory", "Factory Delivery"
-        FREIGHT = "freight", "Freight"
-
-    method_type = models.CharField(
-        max_length=20, choices=MethodType.choices, editable=False
-    )
-
-    name = models.CharField(max_length=100)
-    description = models.TextField(blank=True, null=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(default=timezone.now, editable=False)
-    updated_at = models.DateTimeField(auto_now=True)
-    priority = models.IntegerField(default=1)
-    
-    base_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    cost_per_kg = models.DecimalField(max_digits=6, decimal_places=2, default=0)
-    cost_per_km = models.DecimalField(max_digits=6, decimal_places=2, default=0)
-    
-    max_weight_kg = models.DecimalField(max_digits=10, decimal_places=2)
-    max_distance_km = models.PositiveIntegerField()
-
-
-    def estimate_delivery_days(self, *args):
-        if self.method_type == 'factory':
-            try:
-                D_d, W_d = args
-            except ValueError:
-                raise ValueError("Factory delivery requires: D_d, W_d")
-
-            D_ref = 1
-            k = 0.1
-
-            result = (D_d / self.max_distance_km) * (1 + k * (W_d / self.max_weight_kg)) * D_ref
-            return max(math.ceil(result), 1)
-
-        elif self.method_type == 'freight':
-            try:
-                (D_d,) = args
-            except ValueError:
-                raise ValueError("Freight delivery requires: D_d")
-
-            result = D_d / self.max_distance_km * self.D_ref + self.extra_days
-            return max(math.ceil(result), 1)
-
-        else:
-            raise ValueError(f"Unknown delivery method type: {self.method_type}")
-
-    def save(self, *args, **kwargs):
-        if hasattr(self, "METHOD_TYPE"):
-            self.method_type = self.METHOD_TYPE
-
-        # This means that the model isn't saved to the database yet
-        if self._state.adding:
-            # Get the maximum display_id value from the database
-            last_priority = self.__class__.objects.all().aggregate(largest=models.Max('priority'))['largest']
-
-            # aggregate can return None! Check it first.
-            # If it isn't none, just use the last ID specified (which should be the greatest) and add one to it
-            if last_priority is not None:
-                self.priority = last_priority + 1
-
-        super().save(*args, **kwargs)
-
-    class Meta:
-        ordering = ['name', "priority"]
-        constraints = [
-            models.UniqueConstraint(fields=['priority'], name='unique_priorities')
-        ]
-
-    def __str__(self):
-        return self.name
-
+class Domain(DomainMixin):
+    pass
 
 
 
