@@ -12,16 +12,18 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+load_dotenv(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-f80#2-66b7(&g%ce1!1^od@^wu5$z*ota@@+lsgapk)rs*#&1o'
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -50,8 +52,8 @@ ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT = 5
 # ACCOUNT_EMAIL_VERIFICATION_CODE_LENGTH = 6
 
 
-
-
+ORS_API_KEY = os.getenv('ORS_API_KEY')
+STRIPE_KEY = os.getenv('STRIPE_KEY')
 
 # Application definition
 
@@ -69,6 +71,7 @@ INSTALLED_APPS = [
     'auth_kit',
     'auth_kit.mfa',
     'drf_spectacular',
+    'django_q',
     'factory.apps.FactoryConfig',
     'dashboard.apps.DashboardConfig',
     'base.apps.BaseConfig',

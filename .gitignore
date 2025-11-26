@@ -190,3 +190,5 @@ logs/
 # Secrets and keys
 secrets.json
 keys/
+
+test_distance.py
