@@ -15,7 +15,11 @@ from .serializers import (
     CartSerializer,
     StoredFlashing,
     Address,
+    TemplateSerializer,
+    NewJobReferenceSerializer,
+    UserSerializer
 )
+from .drafts import JobReferenceDraft
 from .models import Cart, Order
 from .sanpshots import (
     StoredFlashingSnapshot,
@@ -25,6 +29,14 @@ from .sanpshots import (
     PaymentSnapshot,
 )
 from .utils import create_stripe_session, get_stripe_session_payment_intent
+
+
+class UserProfileView(generics.RetrieveAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
 
 
 class UserFactoryView(generics.RetrieveAPIView):
@@ -64,13 +76,37 @@ class JobReferenceView(viewsets.ModelViewSet):
     serializer_class = JobReferenceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    http_method_names = ["get", "post", "patch", "delete", "options"]
+    http_method_names = ["get", "patch", "delete", "options"]
 
     def get_queryset(self):
         return self.request.user.job_references.all()
 
     def perform_create(self, serializer):
         serializer.save(client_id=self.request.user.id)
+
+    @action(detail=False, methods=["patch", "get"], url_path="new")
+    def new(self, request):
+        user = request.user
+
+        draft, _ = JobReferenceDraft.objects.get_or_create(client=user)
+
+        serializer = NewJobReferenceSerializer(
+            draft, data=request.data, partial=True, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class NewJobReferenceView(viewsets.ModelViewSet):
+    serializer_class = NewJobReferenceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    http_method_names=["patch", "options"]
+
+    def get_queryset(self):
+        return self.request.user.draf_job_reference
 
 
 class AddressView(viewsets.ModelViewSet):
@@ -95,6 +131,19 @@ class OrderView(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return self.request.user.orders.all()
+
+    def perform_create(self, serializer):
+        serializer.save(client_id=self.request.user.id)
+
+
+class TemplateView(viewsets.ModelViewSet):
+    serializer_class = TemplateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    http_method_names = ["get", "post", "options", "patch"]
+    
+    def get_queryset(self):
+        return self.request.user.templates.all()
 
     def perform_create(self, serializer):
         serializer.save(client_id=self.request.user.id)

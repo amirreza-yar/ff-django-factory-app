@@ -8,6 +8,7 @@ from .sanpshots import (
     JobReferenceSnapshot,
     SpecificationSnapshot,
 )
+from .drafts import JobReferenceDraft
 
 admin.site.register(StoredFlashing)
 admin.site.register(Order)
@@ -21,3 +22,5 @@ admin.site.register(PaymentSnapshot)
 admin.site.register(MaterialSnapshot)
 admin.site.register(JobReferenceSnapshot)
 admin.site.register(SpecificationSnapshot)
+
+admin.site.register(JobReferenceDraft)

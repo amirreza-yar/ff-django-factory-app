@@ -14,7 +14,7 @@ class SpecificationSnapshot(models.Model):
     length = models.FloatField()
 
     cost = models.FloatField()
-    
+
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValueError("SpecificationSnapshot is immutable and cannot be updated once created.")
@@ -38,7 +38,7 @@ class MaterialSnapshot(models.Model):
     price_per_fold = models.FloatField()
     price_per_100girth = models.FloatField()
     price_per_crush_fold = models.FloatField()
-    
+
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValueError("MaterialSnapshot is immutable and cannot be updated once created.")
@@ -49,7 +49,7 @@ class MaterialSnapshot(models.Model):
 
 class StoredFlashingSnapshot(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="flashings")
-    
+
     start_crush_fold = models.BooleanField(default=False)
     end_crush_fold = models.BooleanField(default=False)
     color_side_dir = models.BooleanField(default=False)
@@ -60,7 +60,7 @@ class StoredFlashingSnapshot(models.Model):
     total_girth = models.FloatField()
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
-    
+
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValueError("StoredFlashingSnapshot is immutable and cannot be updated once created.")
@@ -68,7 +68,7 @@ class StoredFlashingSnapshot(models.Model):
 
     def __str__(self):
         return f"Flashing snapshot {self.id} for order {self.order}"
-    
+
 class JobReferenceSnapshot(models.Model):
     order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="job_reference")
     

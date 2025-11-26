@@ -21,7 +21,7 @@ User = get_user_model()
 
 
 class Specification(models.Model):
-    flashing = models.ForeignKey(
+    flashing = models.OneToOneField(
         "StoredFlashing", on_delete=models.CASCADE, related_name="specifications"
     )
 
@@ -190,6 +190,12 @@ class Cart(models.Model):
 
         return True
 
+    def clean(self):
+        super().clean()
+        incomplete = self.flashings.filter(is_complete=False)
+        if incomplete.exists():
+            self.flashings.remove(*incomplete)
+
     def __str__(self):
         return f"Cart for client {self.client_id}"
 
@@ -292,3 +298,20 @@ class Address(models.Model):
             trigger_async_geocode_distance(self)
 
         super().save(*args, **kwargs)
+
+
+class Template(models.Model):
+    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name='templates')
+    name = models.CharField(max_length=30)
+
+    start_crush_fold = models.BooleanField(default=False)
+    end_crush_fold = models.BooleanField(default=False)
+    color_side_dir = models.BooleanField(default=False)
+    tapered = models.BooleanField(default=False)
+
+    nodes = models.JSONField(validators=[validate_nodes])
+
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    def __str__(self):
+        return f"Template {self.name} for client {self.client}"

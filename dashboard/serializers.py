@@ -1,7 +1,17 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator, ValidationError
+from django.contrib.auth import get_user_model
 
-from .models import StoredFlashing, Specification, JobReference, Address, Order, Cart
+from .models import (
+    StoredFlashing,
+    Specification,
+    JobReference,
+    Address,
+    Order,
+    Cart,
+    Template,
+)
+from .drafts import JobReferenceDraft
 from factory.models import (
     Factory,
     Staff,
@@ -10,6 +20,17 @@ from factory.models import (
     MaterialGroup,
     DeliveryMethod,
 )
+
+User = get_user_model()
+
+
+class UserSerializer(serializers.ModelSerializer):
+
+    mobile = serializers.CharField(default="+671231231231")
+    
+    class Meta:
+        model = User
+        fields = ["email", "first_name", "last_name", "mobile"]
 
 
 class DynamicFieldsMixin(serializers.ModelSerializer):
@@ -180,6 +201,70 @@ class JobReferenceSerializer(DynamicFieldsMixin):
         return job_reference
 
 
+class NewJobReferenceSerializer(serializers.ModelSerializer):
+    finalize = serializers.BooleanField(default=False)
+
+    class Meta:
+        model = JobReferenceDraft
+        fields = [
+            "code", "project_name", "title", "street_address", "suburb", "state",
+            "postcode", "recipient_name", "recipient_phone",
+            "finalize"
+        ]
+        read_only_fields = ["client"]
+    
+    def validate_code(self, value):
+        user = self.context["request"].user
+        if JobReference.objects.filter(client=user, code=value).exists():
+            raise ValidationError({"You already have a job reference with this code."})
+        return value
+
+    def update(self, instance, validated_data):
+        finalize = validated_data.pop("finalize", False)
+
+        # Normal partial update on draft
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+
+        if finalize:
+            self._finalize(instance)
+
+        return instance
+
+    def _finalize(self, draft):
+        required = [
+            "code", "project_name", "title", "street_address", "suburb",
+            "state", "postcode", "recipient_name", "recipient_phone"
+        ]
+
+        missing = [f for f in required if not getattr(draft, f)]
+        if missing:
+            raise ValidationError({
+                "detail": f"Missing fields: {missing}"
+            })
+
+        # Create real JobReference
+        job_ref = JobReference.objects.create(
+            client=draft.client,
+            code=draft.code,
+            project_name=draft.project_name,
+        )
+
+        Address.objects.create(
+            job_reference=job_ref,
+            title=draft.title,
+            street_address=draft.street_address,
+            suburb=draft.suburb,
+            state=draft.state,
+            postcode=draft.postcode,
+            recipient_name=draft.recipient_name,
+            recipient_phone=draft.recipient_phone,
+        )
+
+        draft.delete()
+
+
 class OrderSerializer(serializers.ModelSerializer):
     flashings = StoredFlashingSerializer(
         many=True,
@@ -212,6 +297,12 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
 
     read_only_fields = ["id", "status", "delivery_cost", "created_at", "is_complete"]
+
+
+class TemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Template
+        fields = "__all__"
 
 
 class CartSerializer(serializers.ModelSerializer):

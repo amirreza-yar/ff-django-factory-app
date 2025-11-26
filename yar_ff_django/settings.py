@@ -71,7 +71,6 @@ INSTALLED_APPS = [
     'auth_kit',
     'auth_kit.mfa',
     'drf_spectacular',
-    'django_q',
     'factory.apps.FactoryConfig',
     'dashboard.apps.DashboardConfig',
     'base.apps.BaseConfig',
@@ -88,9 +87,9 @@ SPECTACULAR_SETTINGS = {
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'allauth.account.middleware.AccountMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -102,7 +101,7 @@ MIDDLEWARE = [
 # REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework.authentication.SessionAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
         'auth_kit.authentication.JWTCookieAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
@@ -123,6 +122,11 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:3000',
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+]
 
 ROOT_URLCONF = 'yar_ff_django.urls'
 
