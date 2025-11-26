@@ -6,14 +6,24 @@ import uuid
 from datetime import timedelta
 
 from factory.models import MaterialVariant
-from .utils import validate_nodes, calculate_total_girth, validate_material_snapshot, generate_six_digit_id, two_days_from_now
+from .utils import (
+    validate_nodes,
+    calculate_total_girth,
+    validate_material_snapshot,
+    generate_six_digit_id,
+    two_days_from_now,
+)
+from .tasks import trigger_async_geocode_distance
 
 import math
 
 User = get_user_model()
 
+
 class Specification(models.Model):
-    flashing = models.ForeignKey('StoredFlashing', on_delete=models.CASCADE, related_name='specifications')
+    flashing = models.ForeignKey(
+        "StoredFlashing", on_delete=models.CASCADE, related_name="specifications"
+    )
 
     quantity = models.IntegerField()
     length = models.FloatField()
@@ -21,9 +31,11 @@ class Specification(models.Model):
     @property
     def cost(self):
         try:
-            mat_group = self.flashing.original_material.group
+            mat_group = self.flashing.material.group
             total_girth = math.ceil(self.flashing.total_girth / 100.0)
-            crush_num = int(self.flashing.start_crush_fold) + int(self.flashing.end_crush_fold)
+            crush_num = int(self.flashing.start_crush_fold) + int(
+                self.flashing.end_crush_fold
+            )
             fold_num = len(self.flashing.nodes) - 2
 
             base_price = mat_group.base_price
@@ -33,15 +45,15 @@ class Specification(models.Model):
 
             c = base_price + price_fold + price_girth + price_crush
 
-            # print(
-            #     "calculated prices: ",
-            #     (base_price, mat_group.base_price, 1),
-            #     (price_fold, mat_group.price_per_fold, fold_num),
-            #     (price_girth, mat_group.price_per_100girth, total_girth),
-            #     (price_crush, mat_group.price_per_crush_fold, crush_num),
-            #     (c),
-            #     sep="\n"
-            # )
+            print(
+                "calculated prices: ",
+                (base_price, mat_group.base_price, 1),
+                (price_fold, mat_group.price_per_fold, fold_num),
+                (price_girth, mat_group.price_per_100girth, total_girth),
+                (price_crush, mat_group.price_per_crush_fold, crush_num),
+                (c),
+                sep="\n"
+            )
 
             return float(c) * float(self.length / 1000) * float(self.quantity)
         except:
@@ -52,22 +64,13 @@ class Specification(models.Model):
 
 
 class StoredFlashing(models.Model):
-    #TODO: The flashing id will be generated on frontend and will be indexed using it,
+    # TODO: The flashing id will be generated on frontend and will be indexed using it,
     #      so I think we need it here to temporary
     # flashing_id = models.CharField(max_length=10, unique=True, primary_key=True)
-    order = models.ManyToManyField('Order', related_name='flashings')
-    client = models.ForeignKey(User, on_delete=models.PROTECT, related_name='flashings')
+    client = models.ForeignKey(User, on_delete=models.PROTECT, related_name="flashings")
 
-    original_material = models.ForeignKey(
-        MaterialVariant,
-        on_delete=models.PROTECT,
-        related_name="ordered_flashings"
-    )
-
-    material_details = models.JSONField(
-        validators=[validate_material_snapshot],
-        null=True,
-        blank=True
+    material = models.ForeignKey(
+        MaterialVariant, on_delete=models.PROTECT, related_name="ordered_flashings"
     )
 
     # Flashing data/nodes properties here
@@ -77,8 +80,7 @@ class StoredFlashing(models.Model):
     tapered = models.BooleanField(default=False)
 
     # Nodes or data
-    nodes = models.JSONField(validators=[validate_nodes], blank=True, null=True)
-    total_girth_cached = models.FloatField(default=0)
+    nodes = models.JSONField(validators=[validate_nodes])
 
     @property
     def total_girth(self):
@@ -88,8 +90,8 @@ class StoredFlashing(models.Model):
             return None
 
     @property
-    def material_details(self):
-        pass
+    def total_cost(self):
+        return sum(spec.cost for spec in self.specifications.all())
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
@@ -97,7 +99,7 @@ class StoredFlashing(models.Model):
     @property
     def is_complete(self):
         required_fields = [
-            "original_material",
+            "material",
             "nodes",
             "total_girth",
             "specifications",
@@ -109,7 +111,7 @@ class StoredFlashing(models.Model):
 
         if not self.specifications.exists():
             return False
-        
+
         try:
             validate_nodes(self.nodes)
         except Exception:
@@ -117,157 +119,176 @@ class StoredFlashing(models.Model):
 
         return True
 
-    def save(self, *args, **kwargs):
-        # if self.pk is None:
-        #     print("\nrefereshing Stored flashing material_details snapshot...\n")
-        #     self.material_details = self.make_snapshot()
-        # else:
-        #     # The snapshot updates here (if the material_details have changed)
-        #     pass
+    def __str__(self):
+        return f"Flashing {self.id} for client {self.client.email}"
 
-        if self.pk is None and self.nodes:
-            self.total_girth_cached = calculate_total_girth(self.nodes)
-        else:
-            old = type(self).objects.filter(pk=self.pk).values("nodes").first()
-            if old and old["nodes"] != self.nodes:
-                self.total_girth_cached = calculate_total_girth(self.nodes)
-        
-        # if self.order and not self.is_complete:
-        #     self.order = None
 
-        super().save(*args, **kwargs)
+class Cart(models.Model):
+    client = models.OneToOneField(User, on_delete=models.CASCADE, related_name="cart")
+    flashings = models.ManyToManyField(StoredFlashing)
 
-    def make_snapshot(self):
-        m = self.original_material
-        g = m.group
+    class DeliveryTypeChoices(models.TextChoices):
+        DELIVERY = "delivery", "Delivery"
+        PICKUP = "pickup", "Pickup"
 
-        return {
-            "variant_type": g.material.variant_type,
-            "name": g.material.name,
-            "variant_label": m.label,
-            "variant_value": m.value,
-            "base_price": float(g.base_price),
-            "price_per_fold": float(g.price_per_fold),
-            "price_per_100girth": float(g.price_per_100girth),
-            "price_per_crush_fold": float(g.price_per_crush_fold),
-            "sample_weight": float(g.sample_weight),
-            "sample_weight_sq_meter": float(g.sample_weight_sq_meter),
-        }
+    delivery_type = models.CharField(
+        max_length=20,
+        choices=DeliveryTypeChoices.choices,
+        default=DeliveryTypeChoices.DELIVERY,
+        editable=False,
+    )
+    delivery_cost = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0, editable=False
+    )
+    delivery_date = models.DateField(null=True)
 
-    def refresh_material_snapshot(self):
-        new_snapshot = self.make_snapshot()
+    stripe_session_id = models.CharField(max_length=100, unique=True, null=True)
 
-        if self.material_snapshot != new_snapshot:
-            self.material_snapshot = new_snapshot
-            self.save(update_fields=["material_snapshot", "updated_at"])
-            return True
+    @property
+    def estimated_delivery_date(self):
+        return two_days_from_now()
 
-        return False
+    address = models.ForeignKey("Address", on_delete=models.SET_NULL, null=True)
+
+    @property
+    def job_reference(self):
+        if not self.address:
+            return None
+        return self.address.job_reference
+
+    @property
+    def flashings_cost(self):
+        return sum(flash.total_cost for flash in self.flashings.all())
+
+    @property
+    def gst_ratio(self):
+        return self.client.factory.gst_ratio
+
+    @property
+    def total_amount(self):
+        return round((self.flashings_cost + float(self.delivery_cost)) * (self.gst_ratio + 1), 2)
+
+    @property
+    def is_complete(self):
+        if not self.flashings.exists():
+            return False
+
+        if not self.address:
+            return False
+
+        if not self.delivery_date:
+            return False
+
+        if not self.job_reference:
+            return False
+
+        if self.flashings_cost <= 0:
+            return False
+
+        if not (0 <= self.gst_ratio <= 1):
+            return False
+
+        return True
 
     def __str__(self):
-        return f"Flashing {self.id} for Order {self.order}"
+        return f"Cart for client {self.client_id}"
 
 
 class Order(models.Model):
-    id = models.CharField(
-        primary_key=True,
-        max_length=6,
-        editable=False,
-        unique=True
+    id = models.CharField(primary_key=True, max_length=6, editable=False, unique=True)
+
+    client = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="orders", editable=False
     )
 
-    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders", editable=False)
-
     class OrderStatus(models.TextChoices):
-        PENDING = 'pending', 'Pending'
-        IN_PROGRESS = 'in_progress', 'In Progress'
-        DELIVERED = 'delivered', 'Delivered'
-        CANCELLED = 'cancelled', 'Cancelled'
+        PENDING = "pending", "Pending"
+        IN_PROGRESS = "in_progress", "In Progress"
+        DELIVERED = "delivered", "Delivered"
+        CANCELLED = "cancelled", "Cancelled"
+        COMPLETE = "complete", "Complete"
 
-    status = models.CharField(max_length=50, choices=OrderStatus.choices, default=OrderStatus.PENDING, editable=False)
+    status = models.CharField(
+        max_length=50,
+        choices=OrderStatus.choices,
+        default=OrderStatus.PENDING,
+        editable=False,
+    )
 
     class DeliveryTypeChoices(models.TextChoices):
-        DELIVERY = 'delivery', 'Delivery'
-        PICKUP = 'pickup', 'Pickup'
-    delivery_type = models.CharField(max_length=20, choices=DeliveryTypeChoices.choices, default=DeliveryTypeChoices.DELIVERY, editable=False)
-    delivery_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0, editable=False)
-    estimated_delivery_date = models.DateField(default=two_days_from_now, editable=False)
+        DELIVERY = "delivery", "Delivery"
+        PICKUP = "pickup", "Pickup"
 
-    original_address = models.ForeignKey('Address', on_delete=models.PROTECT, null=True)
-
-    # For now lets use the 'flashing' which is foreign keyed to this order model
-    # flashings_data = models.JSONField(editable=False)
+    delivery_type = models.CharField(
+        max_length=20,
+        choices=DeliveryTypeChoices.choices,
+        default=DeliveryTypeChoices.DELIVERY,
+        editable=False,
+    )
+    delivery_cost = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0, editable=False
+    )
+    delivery_date = models.DateField(editable=False)
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True, editable=False)
-    
-    # @property
-    # def flashings(self):
-    #     return self.flashings
-    
-    @property
-    def is_complete(self):
-        return False
 
     def save(self, *args, **kwargs):
-        # Generating 6-digits order id
         if not self.id:
             self.id = generate_six_digit_id()
             while Order.objects.filter(id=self.id).exists():
                 self.id = generate_six_digit_id()
 
-        # enforce that all flashings belong to the same client
-        invalid_flashings = self.flashings.exclude(client=self.client)
-        if invalid_flashings.exists():
-            raise ValueError("All flashings must belong to the same client as the order")
-
         super().save(*args, **kwargs)
-        
-
-
 
     def __str__(self):
-        return f"Order num: {self.id}"
-
-
-class PaymentHistory(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment_history')
-
-    transaction_id = models.CharField(max_length=255, unique=True)
-    total_price = models.DecimalField(max_digits=10, decimal_places=2)
-
-    class PaymentMethod(models.TextChoices):
-        CARD = 'card', 'Card'
-        BANK_TRANSFER = 'bank_transfer', 'Bank Transfer'
-        PAYPAL = 'paypal', 'PayPal'
-
-    method = models.CharField(max_length=20, choices=PaymentMethod.choices)
-
-    date = models.DateTimeField(default=timezone.now, editable=False)
-
-    def __str__(self):
-        return f"Payment {self.transaction_id} for Order {self.order.id}"
+        return f"Order {self.id} for client {self.client.email}"
 
 
 class JobReference(models.Model):
-    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name='job_references')
+    client = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="job_references"
+    )
 
-    code = models.PositiveIntegerField(max_length=10)
+    code = models.PositiveIntegerField()
     project_name = models.CharField(max_length=50)
-    
+
     class Meta:
-        unique_together = ('client', 'code')
+        unique_together = ("client", "code")
 
 
 class Address(models.Model):
-    job_reference = models.ForeignKey(JobReference, on_delete=models.CASCADE, related_name='addresses')
+    job_reference = models.ForeignKey(
+        JobReference, on_delete=models.CASCADE, related_name="addresses"
+    )
+
+    class StateChoices(models.TextChoices):
+        NSW = "NSW", "New South Wales"
+        VIC = "VIC", "Victoria"
+        QLD = "QLD", "Queensland"
+        WA = "WA", "Western Australia"
+        SA = "SA", "South Australia"
+        TAS = "TAS", "Tasmania"
+        ACT = "ACT", "Australian Capital Territory"
+        NT = "NT", "Northern Territory"
 
     title = models.CharField(max_length=100)
     street_address = models.CharField(max_length=200)
     suburb = models.CharField(max_length=100)
-    state = models.CharField(max_length=100)
+    state = models.CharField(max_length=3, choices=StateChoices.choices)
     postcode = models.PositiveIntegerField()
+
+    distance_to_factory = models.PositiveIntegerField(default=0)
 
     recipient_name = models.CharField(max_length=50)
     recipient_phone = models.CharField(max_length=50)
+
+    @property
+    def full_address(self):
+        return f"{self.street_address}, {self.suburb}, {self.state} {self.postcode}, Australia"
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            trigger_async_geocode_distance(self)
+
+        super().save(*args, **kwargs)

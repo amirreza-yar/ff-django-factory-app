@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager, UserManager
-
+from django.contrib.auth import get_user_model
 
 class CustomUserManager(UserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -26,7 +26,7 @@ class CustomUserManager(UserManager):
 class CustomUser(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
-    
+
     factory = models.ForeignKey(
         'factory.Factory',
         on_delete=models.SET_NULL,
@@ -34,11 +34,11 @@ class CustomUser(AbstractUser):
         blank=True,
         related_name="clients"
     )
-    
+
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
-    
+
     def __str__(self):
         return f"User {self.id} - {self.email}"

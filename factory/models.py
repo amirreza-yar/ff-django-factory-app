@@ -9,6 +9,15 @@ import math
 
 User = get_user_model()
 
+class StateChoices(models.TextChoices):
+        NSW = "NSW", "New South Wales"
+        VIC = "VIC", "Victoria"
+        QLD = "QLD", "Queensland"
+        WA = "WA", "Western Australia"
+        SA = "SA", "South Australia"
+        TAS = "TAS", "Tasmania"
+        ACT = "ACT", "Australian Capital Territory"
+        NT = "NT", "Northern Territory"
 
 class Factory(models.Model):
     # General
@@ -16,14 +25,24 @@ class Factory(models.Model):
     name = models.CharField(max_length=255)
 
     # Contact information
-    email = models.EmailField(blank=False, null=False)
-    phone = models.CharField(max_length=20, blank=False, null=False)
-    address = models.TextField(blank=False, null=False)
-    description = models.TextField(blank=False, null=False)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20)
+    description = models.TextField()
+
+    street_address = models.CharField(max_length=200)
+    suburb = models.CharField(max_length=100)
+    state = models.CharField(max_length=3, choices=StateChoices.choices)
+    postcode = models.PositiveIntegerField()
+
+    @property
+    def full_address(self):
+        return f"{self.street_address}, {self.suburb}, {self.state} {self.postcode}, Australia"
 
     # Working hours
     working_hours_start = models.TimeField(blank=False, null=False)
     working_hours_end = models.TimeField(blank=False, null=False)
+    
+    gst_ratio = models.FloatField(default=0.1)
 
     # Status
     is_active = models.BooleanField(default=True)
@@ -145,7 +164,7 @@ class Material(models.Model):
         THICKNESS = "thickness", "Thickness"
     
 
-    variant_type = models.CharField(max_length=20, choices=VariantType.choices, default=VariantType.COLOR)
+    variant_type = models.CharField(max_length=10, choices=VariantType.choices, default=VariantType.COLOR)
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

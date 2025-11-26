@@ -3,6 +3,89 @@ import math
 from random import randint
 from django.utils import timezone
 from datetime import timedelta
+from django.conf import settings
+import requests
+import stripe
+
+ORS_API_KEY = settings.ORS_API_KEY
+
+GEOCODE_URL = "https://api.openrouteservice.org/geocode/search"
+ROUTE_URL = "https://api.openrouteservice.org/v2/directions/driving-car"
+
+stripe.api_key = settings.STRIPE_KEY
+
+def create_stripe_session(amount, name="Test Order Pay"):
+    DOMAIN = "http://localhost:8000"
+
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        mode="payment",
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "aud",
+                    "product_data": {"name": name},
+                    "unit_amount": int(amount * 100),  # $10.00
+                },
+                "quantity": 1,
+            }
+        ],
+        success_url=f"{DOMAIN}/api/d/cart/success-pay?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{DOMAIN}/payment/cancel",
+    )
+
+    return session
+
+def get_stripe_session_payment_intent(session_id):
+    session = stripe.checkout.Session.retrieve(session_id)
+    payment_intent = stripe.PaymentIntent.retrieve(session.payment_intent)
+    
+    return session, payment_intent
+
+def geocode_text(query):
+    """Return (lon, lat) from a postcode or partial address."""
+    params = {
+        "api_key": ORS_API_KEY,
+        "text": query,
+        "size": 1
+    }
+
+    resp = requests.get(GEOCODE_URL, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+
+    features = data.get("features")
+    if not features:
+        raise ValueError(f"Could not geocode: {query}")
+
+    coords = features[0]["geometry"]["coordinates"]
+    return coords[0], coords[1]  # (lon, lat)
+
+def driving_distance_km(from_address, to_address):
+    """Return driving distance in kilometers between two postcodes or addresses."""
+    start = geocode_text(from_address)
+    end = geocode_text(to_address)
+
+    body = {
+        "coordinates": [
+            [start[0], start[1]],
+            [end[0], end[1]]
+        ]
+    }
+
+    headers = {
+        "Authorization": ORS_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    resp = requests.post(ROUTE_URL, json=body, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+
+    summary = data["routes"][0]["summary"]
+    distance_meters = summary["distance"]
+
+    return math.ceil(distance_meters / 1000)
 
 def generate_six_digit_id():
     return str(randint(100000, 999999))
@@ -80,8 +163,6 @@ def validate_nodes(nodes):
 
     if len(visited) != len(nodes):
         raise ValidationError("node chain is broken or incomplete")
-
-
 
 def calculate_total_girth(nodes):
         """

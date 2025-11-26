@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator, ValidationError
 
-from .models import StoredFlashing, Specification, JobReference, Address, Order
+from .models import StoredFlashing, Specification, JobReference, Address, Order, Cart
 from factory.models import (
     Factory,
     Staff,
@@ -10,6 +10,18 @@ from factory.models import (
     MaterialGroup,
     DeliveryMethod,
 )
+
+
+class DynamicFieldsMixin(serializers.ModelSerializer):
+    def __init__(self, *args, **kwargs):
+        fields = kwargs.pop("fields", None)
+        super().__init__(*args, **kwargs)
+
+        if fields is not None:
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
 
 
 class FactorySerializer(serializers.ModelSerializer):
@@ -40,35 +52,34 @@ class SpecificationSerializer(serializers.ModelSerializer):
         fields = ["quantity", "length", "cost"]
 
 
-class StoredFlashingSerializer(serializers.ModelSerializer):
-    original_material_id = serializers.PrimaryKeyRelatedField(
-        queryset=MaterialVariant.objects.all(), write_only=True
-    )
+class StoredFlashingSerializer(DynamicFieldsMixin):
+    # original_material_id = serializers.PrimaryKeyRelatedField(
+    #     queryset=MaterialVariant.objects.all(), write_only=True
+    # )
 
-    material = serializers.SerializerMethodField()
+    material_data = serializers.SerializerMethodField()
 
-    specifications = SpecificationSerializer(many=True, required=False)
+    specifications = SpecificationSerializer(many=True, required=True)
 
     class Meta:
         model = StoredFlashing
         fields = [
             "id",
-            "order",
-            "material",
+            "material_data",
             "start_crush_fold",
             "end_crush_fold",
             "color_side_dir",
             "tapered",
             "nodes",
-            "original_material_id",
+            "material",
             "specifications",
             "total_girth",
             "is_complete",
         ]
         read_only_fields = ["id"]
 
-    def get_material(self, obj):
-        m = obj.original_material
+    def get_material_data(self, obj):
+        m = obj.material
         g = m.group
 
         return {
@@ -78,27 +89,36 @@ class StoredFlashingSerializer(serializers.ModelSerializer):
             "variant_value": m.value,
         }
 
-    def create(self, validated_data):
-        request = self.context["request"]
-        user = request.user
-        original_material = validated_data.pop("original_material_id")
+    def _add_to_cart_if_complete(self, flashing):
+        if flashing.is_complete:
+            user = self.context["request"].user
+            if user != flashing.client:
+                raise ValidationError("WHAT??")
+            cart, _ = Cart.objects.get_or_create(client=flashing.client)
+            if not cart.flashings.filter(id=flashing.id).exists():
+                cart.flashings.add(flashing)
 
-        stored_flashing = StoredFlashing.objects.create(
-            client=user, original_material=original_material, **validated_data
-        )
+    def create(self, validated_data):
+        specs_data = validated_data.pop("specifications", None)
+
+        stored_flashing = super().create(validated_data)
+
+        if specs_data is not None:
+            for spec in specs_data:
+                Specification.objects.create(flashing=stored_flashing, **spec)
+
+        self._add_to_cart_if_complete(stored_flashing)
+
         return stored_flashing
 
     def update(self, instance, validated_data):
         specs_data = validated_data.pop("specifications", None)
 
-        # regular field updates
         instance = super().update(instance, validated_data)
 
         if specs_data is not None:
-            # wipe old ones
             instance.specifications.all().delete()
 
-            # recreate
             for spec in specs_data:
                 Specification.objects.create(flashing=instance, **spec)
 
@@ -134,7 +154,7 @@ class AddressSerializer(serializers.ModelSerializer):
         ]
 
 
-class JobReferenceSerializer(serializers.ModelSerializer):
+class JobReferenceSerializer(DynamicFieldsMixin):
 
     addresses = AddressSerializer(many=True, required=False)
 
@@ -161,31 +181,60 @@ class JobReferenceSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    flashings = serializers.PrimaryKeyRelatedField(many=True, queryset=StoredFlashing.objects.none())
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get("request")
-        if request and request.user and request.user.is_authenticated:
-            self.fields['flashings'].queryset = StoredFlashing.objects.filter(client=request.user.id)
+    flashings = StoredFlashingSerializer(
+        many=True,
+        required=True,
+        fields=[
+            "id",
+            "start_crush_fold",
+            "end_crush_fold",
+            "color_side_dir",
+            "tapered",
+            "nodes",
+            "material",
+            "specifications",
+            "total_girth",
+        ],
+    )
 
     class Meta:
         model = Order
         fields = [
             "id",
+            "client",
             "status",
             "delivery_type",
             "delivery_cost",
-            "estimated_delivery_date",
-            "original_address",
+            "delivery_date",
+            "job_reference",
             "flashings",
             "created_at",
-            "is_complete",
         ]
 
-    read_only_fields = ['id', 'status', 'delivery_cost', 'created_at', 'is_complete']
+    read_only_fields = ["id", "status", "delivery_cost", "created_at", "is_complete"]
 
-    def update(self, instance, validated_data):
-        # validated_data.pop("delivery_type", None)
-        # instance.delivery_type = 'delivery'
-        return super().update(instance, validated_data)
+
+class CartSerializer(serializers.ModelSerializer):
+
+    flashings = StoredFlashingSerializer(
+        many=True,
+        required=True,
+    )
+    address = AddressSerializer(many=False, required=True)
+    job_reference = JobReferenceSerializer(
+        many=False, required=True, fields=["id", "code", "project_name"]
+    )
+
+    class Meta:
+        model = Cart
+        fields = [
+            "client",
+            "flashings",
+            "delivery_type",
+            "delivery_cost",
+            "estimated_delivery_date",
+            "address",
+            "job_reference",
+            "delivery_date",
+            "total_amount",
+        ]
