@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework import status
 from datetime import datetime
 
+
 from .serializers import (
     FactorySerializer,
     MaterialSerializer,
@@ -20,7 +21,7 @@ from .serializers import (
     UserSerializer
 )
 from .drafts import JobReferenceDraft
-from .models import Cart, Order
+from .models import Cart, Order, JobReference
 from .sanpshots import (
     StoredFlashingSnapshot,
     MaterialSnapshot,
@@ -31,12 +32,13 @@ from .sanpshots import (
 from .utils import create_stripe_session, get_stripe_session_payment_intent
 
 
-class UserProfileView(generics.RetrieveAPIView):
+class UserProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         return self.request.user
+    
 
 
 class UserFactoryView(generics.RetrieveAPIView):
@@ -76,7 +78,7 @@ class JobReferenceView(viewsets.ModelViewSet):
     serializer_class = JobReferenceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    http_method_names = ["get", "patch", "delete", "options"]
+    http_method_names = ["get", "patch", "post", "delete", "options"]
 
     def get_queryset(self):
         return self.request.user.job_references.all()
@@ -84,19 +86,14 @@ class JobReferenceView(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(client_id=self.request.user.id)
 
-    @action(detail=False, methods=["patch", "get"], url_path="new")
-    def new(self, request):
+    @action(detail=False, methods=["post"], url_path="check-code")
+    def check_code(self, request):
+        code = request.data.get('code')
         user = request.user
 
-        draft, _ = JobReferenceDraft.objects.get_or_create(client=user)
-
-        serializer = NewJobReferenceSerializer(
-            draft, data=request.data, partial=True, context={"request": request}
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        exists = user.job_references.filter(code=code).exists()
+        
+        return Response({"exists": exists})
 
 
 class NewJobReferenceView(viewsets.ModelViewSet):
@@ -113,7 +110,7 @@ class AddressView(viewsets.ModelViewSet):
     serializer_class = AddressSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    http_method_names = ["get", "post", "patch", "options"]
+    http_method_names = ["get", "post", "delete", "patch", "options"]
 
     def get_queryset(self):
         job_ref_id = self.kwargs.get("job_ref_pk")

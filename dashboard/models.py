@@ -287,7 +287,7 @@ class Address(models.Model):
     distance_to_factory = models.PositiveIntegerField(default=0)
 
     recipient_name = models.CharField(max_length=50)
-    recipient_phone = models.CharField(max_length=50)
+    recipient_phone = models.PositiveIntegerField()
 
     @property
     def full_address(self):

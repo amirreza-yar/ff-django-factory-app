@@ -74,12 +74,7 @@ class SpecificationSerializer(serializers.ModelSerializer):
 
 
 class StoredFlashingSerializer(DynamicFieldsMixin):
-    # original_material_id = serializers.PrimaryKeyRelatedField(
-    #     queryset=MaterialVariant.objects.all(), write_only=True
-    # )
-
     material_data = serializers.SerializerMethodField()
-
     specifications = SpecificationSerializer(many=True, required=True)
 
     class Meta:
@@ -212,7 +207,7 @@ class NewJobReferenceSerializer(serializers.ModelSerializer):
             "finalize"
         ]
         read_only_fields = ["client"]
-    
+
     def validate_code(self, value):
         user = self.context["request"].user
         if JobReference.objects.filter(client=user, code=value).exists():

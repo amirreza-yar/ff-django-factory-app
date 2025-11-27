@@ -6,8 +6,13 @@ class CustomUserManager(UserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError(_('The Email field must be set'))
+        
+        phone = extra_fields.get('phone')
+        if phone is None:
+            raise ValueError(_('The phone field must be set'))
+
         email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
+        user = self.model(email=email, phone=phone, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -21,7 +26,12 @@ class CustomUserManager(UserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError(_('Superuser must have is_superuser=True.'))
 
+        # superusers need a phone too
+        if extra_fields.get('phone') is None:
+            raise ValueError(_('Superuser must have a phone number.'))
+
         return self.create_user(email, password, **extra_fields)
+
 
 class CustomUser(AbstractUser):
     username = None
@@ -36,6 +46,10 @@ class CustomUser(AbstractUser):
     )
 
     objects = CustomUserManager()
+    
+    # phone = models.PositiveIntegerField()
+    
+    # is_phone_verified = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
