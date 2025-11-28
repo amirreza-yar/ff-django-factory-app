@@ -202,7 +202,6 @@ class MaterialGroup(models.Model):
     sample_weight = models.DecimalField(max_digits=10, decimal_places=2)
     sample_weight_sq_meter = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
 
-    # def calculate_weight(self, )
 
     def __str__(self):
         return f"{self.material.name} - Group #{self.id}"
@@ -215,6 +214,11 @@ class MaterialVariant(models.Model):
 
     label = models.CharField(max_length=100)
     value = models.CharField(max_length=100)
+
+    def calculate_weight(self, girth, length):
+        sample = float(self.group.sample_weight) / float(self.group.sample_weight_sq_meter)
+
+        return sample * girth * length / 1000000
 
     def clean(self):
         if not self.pk and not self.group_id:

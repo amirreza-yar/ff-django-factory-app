@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import StoredFlashing, Order, JobReference, Address, Cart
+from .models import StoredFlashing, Order, JobReference, Address, Cart, Specification
 from .sanpshots import (
     StoredFlashingSnapshot,
     PaymentSnapshot,
@@ -11,6 +11,7 @@ from .sanpshots import (
 from .drafts import JobReferenceDraft
 
 admin.site.register(StoredFlashing)
+admin.site.register(Specification)
 admin.site.register(Order)
 admin.site.register(JobReference)
 admin.site.register(Address)

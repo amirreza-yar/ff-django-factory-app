@@ -64,46 +64,41 @@ class FactorySerializer(serializers.ModelSerializer):
 
 
 class SpecificationSerializer(serializers.ModelSerializer):
-    # cost = serializers.SerializerMethodField()
-
-    # def get_cost(self, obj):
-    #     return obj.cost
-
     class Meta:
         model = Specification
-        fields = ["quantity", "length", "cost"]
+        fields = ["quantity", "length", "cost", "weight"]
 
 
 class StoredFlashingSerializer(DynamicFieldsMixin):
-    material_data = serializers.SerializerMethodField()
+    material = serializers.SerializerMethodField()
     specifications = SpecificationSerializer(many=True, required=True)
 
     class Meta:
         model = StoredFlashing
         fields = [
             "id",
-            "material_data",
+            "material",
             "start_crush_fold",
             "end_crush_fold",
             "color_side_dir",
             "tapered",
             "nodes",
-            "material",
             "specifications",
             "total_girth",
+            "total_weight",
             "is_complete",
         ]
         read_only_fields = ["id"]
 
-    def get_material_data(self, obj):
+    def get_material(self, obj):
         m = obj.material
         g = m.group
 
         return {
-            "material": g.material.name,
+            "name": g.material.name,
             "type": g.material.variant_type,
-            "variant_label": m.label,
-            "variant_value": m.value,
+            "label": m.label,
+            "value": m.value,
         }
 
     def _add_to_cart_if_complete(self, flashing):

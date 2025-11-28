@@ -38,6 +38,8 @@ class MaterialSnapshot(models.Model):
     price_per_fold = models.FloatField()
     price_per_100girth = models.FloatField()
     price_per_crush_fold = models.FloatField()
+    sample_weight = models.DecimalField(max_digits=10, decimal_places=2)
+    sample_weight_sq_meter = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
 
     def save(self, *args, **kwargs):
         if self.pk:

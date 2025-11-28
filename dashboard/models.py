@@ -5,7 +5,7 @@ from django.db.models import Q, F
 import uuid
 from datetime import timedelta
 
-from factory.models import MaterialVariant
+from factory.models import MaterialVariant, DeliveryMethod
 from .utils import (
     validate_nodes,
     calculate_total_girth,
@@ -21,12 +21,19 @@ User = get_user_model()
 
 
 class Specification(models.Model):
-    flashing = models.OneToOneField(
+    flashing = models.ForeignKey(
         "StoredFlashing", on_delete=models.CASCADE, related_name="specifications"
     )
 
     quantity = models.IntegerField()
     length = models.FloatField()
+
+    @property
+    def weight(self):
+        calc_weight = self.flashing.material.calculate_weight
+        girth = self.flashing.total_girth
+        return round(calc_weight(girth, self.length) * self.quantity, 2)
+        
 
     @property
     def cost(self):
@@ -45,15 +52,15 @@ class Specification(models.Model):
 
             c = base_price + price_fold + price_girth + price_crush
 
-            print(
-                "calculated prices: ",
-                (base_price, mat_group.base_price, 1),
-                (price_fold, mat_group.price_per_fold, fold_num),
-                (price_girth, mat_group.price_per_100girth, total_girth),
-                (price_crush, mat_group.price_per_crush_fold, crush_num),
-                (c),
-                sep="\n",
-            )
+            # print(
+            #     "calculated prices: ",
+            #     (base_price, mat_group.base_price, 1),
+            #     (price_fold, mat_group.price_per_fold, fold_num),
+            #     (price_girth, mat_group.price_per_100girth, total_girth),
+            #     (price_crush, mat_group.price_per_crush_fold, crush_num),
+            #     (c),
+            #     sep="\n",
+            # )
 
             return float(c) * float(self.length / 1000) * float(self.quantity)
         except:
@@ -118,6 +125,10 @@ class StoredFlashing(models.Model):
             return False
 
         return True
+    
+    @property
+    def total_weight(self):
+        return round(sum(spec.weight for spec in self.specifications.all()), 2)
 
     def __str__(self):
         return f"Flashing {self.id} for client {self.client.email}"
@@ -126,6 +137,8 @@ class StoredFlashing(models.Model):
 class Cart(models.Model):
     client = models.OneToOneField(User, on_delete=models.CASCADE, related_name="cart")
     flashings = models.ManyToManyField(StoredFlashing)
+
+    delivery_method = models.ForeignKey(DeliveryMethod, on_delete=models.SET_NULL, null=True)
 
     class DeliveryTypeChoices(models.TextChoices):
         DELIVERY = "delivery", "Delivery"
@@ -169,6 +182,11 @@ class Cart(models.Model):
         return round(
             (self.flashings_cost + float(self.delivery_cost)) * (self.gst_ratio + 1), 2
         )
+    
+    @property
+    def total_delivery_weight(self):
+        return round(sum(flash.total_weight for flash in self.flashings.all()), 2)
+
 
     @property
     def is_complete(self):

@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework import status
 from datetime import datetime
 
-
+from factory.models import DeliveryMethod
 from .serializers import (
     FactorySerializer,
     MaterialSerializer,
@@ -18,7 +18,7 @@ from .serializers import (
     Address,
     TemplateSerializer,
     NewJobReferenceSerializer,
-    UserSerializer
+    UserSerializer,
 )
 from .drafts import JobReferenceDraft
 from .models import Cart, Order, JobReference
@@ -38,7 +38,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
-    
 
 
 class UserFactoryView(generics.RetrieveAPIView):
@@ -88,11 +87,11 @@ class JobReferenceView(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="check-code")
     def check_code(self, request):
-        code = request.data.get('code')
+        code = request.data.get("code")
         user = request.user
 
         exists = user.job_references.filter(code=code).exists()
-        
+
         return Response({"exists": exists})
 
 
@@ -100,7 +99,7 @@ class NewJobReferenceView(viewsets.ModelViewSet):
     serializer_class = NewJobReferenceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    http_method_names=["patch", "options"]
+    http_method_names = ["patch", "options"]
 
     def get_queryset(self):
         return self.request.user.draf_job_reference
@@ -138,7 +137,7 @@ class TemplateView(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     http_method_names = ["get", "post", "options", "patch"]
-    
+
     def get_queryset(self):
         return self.request.user.templates.all()
 
@@ -180,17 +179,41 @@ class CartView(viewsets.ViewSet):
         if not address_id:
             return Response({"error": "address_id is required"}, status=400)
 
+        cart = request.user.cart
         try:
             address = Address.objects.get(
                 id=address_id, job_reference__client=request.user
             )
+            cart.address = address
         except Address.DoesNotExist:
             return Response({"error": "Address not found"}, status=404)
 
-        cart = request.user.cart
-        cart.address = address
-        cart.save()
+        if cart.delivery_type == "delivery":
+            try:
+                delivery_methods = DeliveryMethod.objects.filter(
+                    is_active=True
+                ).order_by("priority")
+                distance = address.distance_to_factory
+                weight = cart.total_delivery_weight
 
+                d_method = None
+
+                for d in delivery_methods:
+                    if d.max_distance_km > distance and d.max_weight_kg > weight:
+                        d_method = d
+                        break
+                cart.delivery_method = d_method
+                cart.delivery_cost = (
+                    float(d_method.base_cost)
+                    + float(d_method.cost_per_kg) * weight
+                    + float(d_method.cost_per_km) * distance
+                )
+            except:
+                return Response(
+                    {"error": "Couldn't set delivery method and amount"}, status=500
+                )
+
+        cart.save()
         serializer = CartSerializer(cart, context={"request": request})
         return Response(serializer.data)
 
@@ -287,7 +310,6 @@ class CartView(viewsets.ViewSet):
                 method="stripe",
             )
 
-
             JobReferenceSnapshot.objects.create(
                 order=order_snapshot,
                 code=cart.job_reference.code,
@@ -302,7 +324,6 @@ class CartView(viewsets.ViewSet):
                 recipient_phone=cart.address.recipient_phone,
             )
 
-
             for flash in cart.flashings.all():
                 flash_snapshot = StoredFlashingSnapshot.objects.create(
                     order=order_snapshot,
@@ -313,7 +334,6 @@ class CartView(viewsets.ViewSet):
                     nodes=flash.nodes,
                     total_girth=flash.total_girth,
                 )
-
 
                 original_variant = flash.material
                 original_material = flash.material.group.material
@@ -331,7 +351,6 @@ class CartView(viewsets.ViewSet):
                     price_per_crush_fold=original_group.price_per_crush_fold,
                 )
 
-
                 for spec in flash.specifications.all():
                     SpecificationSnapshot.objects.create(
                         flashing=flash_snapshot,
@@ -342,20 +361,24 @@ class CartView(viewsets.ViewSet):
 
             # TODO: Here first of all the cart should be empty. Then the stored flashings should be removed
 
-            
-            
-            # cart.delete()
-            # cart.save()
+            for flash in cart.flashings.all():
+                flash.delete()
+
+            cart.delete()
 
         except Exception as e:
             order_snapshot.delete()
             return Response(
-                {"error": f"Couldn't create snapshots: {str(e)}"},
-                status=500
+                {"error": f"Couldn't create snapshots: {str(e)}"}, status=500
             )
 
         serializer = CartSerializer(cart, context={"request": request})
         order_serializer = OrderSerializer(order_snapshot, context={"request": request})
         return Response(
-            {"cart": serializer.data, "session": session, "intent": payment_intent, "order": order_serializer.data}
+            {
+                "cart": serializer.data,
+                "session": session,
+                "intent": payment_intent,
+                "order": order_serializer.data,
+            }
         )
