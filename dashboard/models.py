@@ -13,7 +13,7 @@ from .utils import (
     generate_six_digit_id,
     two_days_from_now,
 )
-from .tasks import trigger_async_geocode_distance
+from .tasks import trigger_async_geocode_distance, geocode_async
 
 import math
 
@@ -33,7 +33,6 @@ class Specification(models.Model):
         calc_weight = self.flashing.material.calculate_weight
         girth = self.flashing.total_girth
         return round(calc_weight(girth, self.length) * self.quantity, 2)
-        
 
     @property
     def cost(self):
@@ -125,7 +124,7 @@ class StoredFlashing(models.Model):
             return False
 
         return True
-    
+
     @property
     def total_weight(self):
         return round(sum(spec.weight for spec in self.specifications.all()), 2)
@@ -136,9 +135,7 @@ class StoredFlashing(models.Model):
 
 class Cart(models.Model):
     client = models.OneToOneField(User, on_delete=models.CASCADE, related_name="cart")
-    flashings = models.ManyToManyField(StoredFlashing)
-
-    delivery_method = models.ForeignKey(DeliveryMethod, on_delete=models.SET_NULL, null=True)
+    flashings = models.ManyToManyField(StoredFlashing, related_name="cart")
 
     class DeliveryTypeChoices(models.TextChoices):
         DELIVERY = "delivery", "Delivery"
@@ -150,24 +147,49 @@ class Cart(models.Model):
         default=DeliveryTypeChoices.DELIVERY,
         editable=False,
     )
-    delivery_cost = models.DecimalField(
-        max_digits=8, decimal_places=2, default=0, editable=False
-    )
+
     delivery_date = models.DateField(null=True)
 
     stripe_session_id = models.CharField(max_length=100, unique=True, null=True)
+
+    @property
+    def delivery_method(self):
+        if self.address:
+            return self.address.best_delivery_method
+        else:
+            return None
+
+    @property
+    def delivery_cost(self):
+        if self.address:
+            d = self.delivery_method
+            return (
+                float(d.base_cost)
+                + float(d.cost_per_kg) * self.total_delivery_weight
+                + float(d.cost_per_km) * self.address.distance_to_factory
+            )
+        else:
+            return None
 
     @property
     def estimated_delivery_date(self):
         return two_days_from_now()
 
     address = models.ForeignKey("Address", on_delete=models.SET_NULL, null=True)
+    job_reference_pickup = models.ForeignKey(
+        "JobReference", on_delete=models.SET_NULL, null=True
+    )
 
     @property
     def job_reference(self):
-        if not self.address:
+        if self.delivery_type == self.DeliveryTypeChoices.DELIVERY:
+            if not self.address:
+                return None
+            return self.address.job_reference
+        elif self.delivery_type == self.DeliveryTypeChoices.PICKUP:
+            return self.job_reference_pickup
+        else:
             return None
-        return self.address.job_reference
 
     @property
     def flashings_cost(self):
@@ -182,12 +204,12 @@ class Cart(models.Model):
         return round(
             (self.flashings_cost + float(self.delivery_cost)) * (self.gst_ratio + 1), 2
         )
-    
+
     @property
     def total_delivery_weight(self):
         return round(sum(flash.total_weight for flash in self.flashings.all()), 2)
 
-
+    # TODO The address should not be checked when pickup
     @property
     def is_complete(self):
         if not self.flashings.exists():
@@ -210,11 +232,17 @@ class Cart(models.Model):
 
         return True
 
-    def clean(self):
-        super().clean()
-        incomplete = self.flashings.filter(is_complete=False)
-        if incomplete.exists():
+    def _cleanup_incomplete_flashings(self):
+        # Remove incomplete flashings after save (m2m requires PK)
+        incomplete = [f for f in self.flashings.all() if not f.is_complete]
+        if len(incomplete) > 0:
             self.flashings.remove(*incomplete)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        # Post-save operations that require PK (m2m operations)
+        self._cleanup_incomplete_flashings()
 
     def __str__(self):
         return f"Cart for client {self.client_id}"
@@ -306,13 +334,28 @@ class Address(models.Model):
     recipient_name = models.CharField(max_length=50)
     recipient_phone = models.PositiveIntegerField()
 
+    # TODO This property should be synced to distance_to_factory and trigger_async_geocode_distance()
+    @property
+    def best_delivery_method(self):
+        if self.distance_to_factory:
+            return (
+                DeliveryMethod.objects.filter(
+                    is_active=True, max_distance_km__gt=self.distance_to_factory
+                )
+                .order_by("priority")
+                .first()
+            )
+        else:
+            return None
+
     @property
     def full_address(self):
         return f"{self.street_address}, {self.suburb}, {self.state} {self.postcode}, Australia"
 
     def save(self, *args, **kwargs):
         if self.pk is None:
-            trigger_async_geocode_distance(self)
+            # trigger_async_geocode_distance(self)
+            geocode_async(self)
 
         super().save(*args, **kwargs)
 

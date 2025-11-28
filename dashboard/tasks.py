@@ -6,7 +6,7 @@ def geocode_async(address):
     # lon, lat = geocode_text(address.full_address)
     distance = driving_distance_km(factory_address, address.full_address)
 
-    print(f"Address: {address.full_address}\nFactory address: {factory_address}\nDistance to factory: {distance} km")
+    # print(f"Address: {address.full_address}\nFactory address: {factory_address}\nDistance to factory: {distance} km")
 
     # address.latitude = lat
     # address.longitude = lon

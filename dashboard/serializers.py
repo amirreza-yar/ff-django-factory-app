@@ -69,8 +69,8 @@ class SpecificationSerializer(serializers.ModelSerializer):
         fields = ["quantity", "length", "cost", "weight"]
 
 
-class StoredFlashingSerializer(DynamicFieldsMixin):
-    material = serializers.SerializerMethodField()
+class StoredFlashingSerializer(serializers.ModelSerializer):
+    material_data = serializers.SerializerMethodField()
     specifications = SpecificationSerializer(many=True, required=True)
 
     class Meta:
@@ -78,6 +78,7 @@ class StoredFlashingSerializer(DynamicFieldsMixin):
         fields = [
             "id",
             "material",
+            "material_data",
             "start_crush_fold",
             "end_crush_fold",
             "color_side_dir",
@@ -90,7 +91,7 @@ class StoredFlashingSerializer(DynamicFieldsMixin):
         ]
         read_only_fields = ["id"]
 
-    def get_material(self, obj):
+    def get_material_data(self, obj):
         m = obj.material
         g = m.group
 

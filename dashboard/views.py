@@ -156,22 +156,9 @@ class CartView(viewsets.ViewSet):
         serializer = CartSerializer(cart, context={"request": request})
         return Response(serializer.data)
 
-    @action(detail=False, methods=["post"], url_path="remove-flashing")
-    def remove_flashing(self, request):
-
-        flashing_id = request.data.get("flashing_id")
-        if not flashing_id:
-            return Response({"error": "flashing_id is required"}, status=400)
-
-        try:
-            flashing = StoredFlashing.objects.get(id=flashing_id, client=request.user)
-        except StoredFlashing.DoesNotExist:
-            return Response({"error": "Flashing not found"}, status=404)
-
-        cart = request.user.cart
-        cart.flashings.remove(flashing)
-        cart.save()
-        return Response({"success": f"Flashing {flashing_id} removed from cart"})
+    # @action(detail=False, methods=["post"], url_path="set-delivery-type")
+    # def set_delivery_type(self, request):
+        
 
     @action(detail=False, methods=["post"], url_path="set-address")
     def add_address(self, request):
@@ -187,31 +174,6 @@ class CartView(viewsets.ViewSet):
             cart.address = address
         except Address.DoesNotExist:
             return Response({"error": "Address not found"}, status=404)
-
-        if cart.delivery_type == "delivery":
-            try:
-                delivery_methods = DeliveryMethod.objects.filter(
-                    is_active=True
-                ).order_by("priority")
-                distance = address.distance_to_factory
-                weight = cart.total_delivery_weight
-
-                d_method = None
-
-                for d in delivery_methods:
-                    if d.max_distance_km > distance and d.max_weight_kg > weight:
-                        d_method = d
-                        break
-                cart.delivery_method = d_method
-                cart.delivery_cost = (
-                    float(d_method.base_cost)
-                    + float(d_method.cost_per_kg) * weight
-                    + float(d_method.cost_per_km) * distance
-                )
-            except:
-                return Response(
-                    {"error": "Couldn't set delivery method and amount"}, status=500
-                )
 
         cart.save()
         serializer = CartSerializer(cart, context={"request": request})
@@ -259,7 +221,7 @@ class CartView(viewsets.ViewSet):
         cart = request.user.cart
         if not cart.is_complete:
             return Response(
-                {"error": "Cart cannot isn't complete"},
+                {"error": "Cart isn't complete"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
