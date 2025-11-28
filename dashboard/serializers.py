@@ -12,6 +12,7 @@ from .models import (
     Template,
 )
 from .drafts import JobReferenceDraft
+from .sanpshots import StoredFlashingSnapshot
 from factory.models import (
     Factory,
     Staff,
@@ -27,7 +28,7 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
 
     mobile = serializers.CharField(default="+671231231231")
-    
+
     class Meta:
         model = User
         fields = ["email", "first_name", "last_name", "mobile"]
@@ -141,6 +142,43 @@ class StoredFlashingSerializer(DynamicFieldsMixin):
         return instance
 
 
+class StoredFlashingSnapshotSerializer(serializers.ModelSerializer):
+    material = serializers.SerializerMethodField()
+    specifications = serializers.SerializerMethodField()
+
+    def get_material(self, obj):
+        return {
+            "type": obj.material.variant_type,
+            "name": obj.material.name,
+            "label": obj.material.variant_label,
+            "value": obj.material.variant_value,
+        }
+
+    def get_specifications(self, obj):
+        specs = obj.specifications.all()
+        return [
+            {
+                "quantity": s.quantity,
+                "length": s.length,
+                "cost": s.cost,
+            }
+            for s in specs
+        ]
+
+    class Meta:
+        model = StoredFlashingSnapshot
+        fields = [
+            "start_crush_fold",
+            "end_crush_fold",
+            "color_side_dir",
+            "tapered",
+            "nodes",
+            "total_girth",
+            "material",
+            "specifications",
+        ]
+
+
 class MaterialVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = MaterialVariant
@@ -202,9 +240,16 @@ class NewJobReferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = JobReferenceDraft
         fields = [
-            "code", "project_name", "title", "street_address", "suburb", "state",
-            "postcode", "recipient_name", "recipient_phone",
-            "finalize"
+            "code",
+            "project_name",
+            "title",
+            "street_address",
+            "suburb",
+            "state",
+            "postcode",
+            "recipient_name",
+            "recipient_phone",
+            "finalize",
         ]
         read_only_fields = ["client"]
 
@@ -229,15 +274,20 @@ class NewJobReferenceSerializer(serializers.ModelSerializer):
 
     def _finalize(self, draft):
         required = [
-            "code", "project_name", "title", "street_address", "suburb",
-            "state", "postcode", "recipient_name", "recipient_phone"
+            "code",
+            "project_name",
+            "title",
+            "street_address",
+            "suburb",
+            "state",
+            "postcode",
+            "recipient_name",
+            "recipient_phone",
         ]
 
         missing = [f for f in required if not getattr(draft, f)]
         if missing:
-            raise ValidationError({
-                "detail": f"Missing fields: {missing}"
-            })
+            raise ValidationError({"detail": f"Missing fields: {missing}"})
 
         # Create real JobReference
         job_ref = JobReference.objects.create(
@@ -261,37 +311,61 @@ class NewJobReferenceSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    flashings = StoredFlashingSerializer(
+
+    flashings = StoredFlashingSnapshotSerializer(
         many=True,
         required=True,
-        fields=[
-            "id",
-            "start_crush_fold",
-            "end_crush_fold",
-            "color_side_dir",
-            "tapered",
-            "nodes",
-            "material",
-            "specifications",
-            "total_girth",
-        ],
     )
+
+    job_reference = serializers.SerializerMethodField()
+    delivery = serializers.SerializerMethodField()
+    payment_history = serializers.SerializerMethodField()
+
+    def get_job_reference(self, obj):
+        j = obj.job_reference
+        return {
+            "code": obj.job_reference.code,
+            "project_name": j.project_name,
+            "address_title": j.title,
+            "full_address": j.full_address,
+            "recipient_name": j.recipient_name,
+            "recipient_phone": j.recipient_phone,
+        }
+
+    def get_delivery(self, obj):
+        if obj.delivery_type == "delivery":
+            return {
+                "type": obj.delivery_type,
+                "cost": obj.delivery_cost,
+                "date": obj.delivery_date,
+            }
+        elif obj.delivery_type == "delivery":
+            return {
+                "type": obj.delivery_type,
+                # "date": obj.delivery_date,
+            }
+
+    def get_payment_history(self, obj):
+        p = obj.payment_history
+        return {
+            "transaction_id": p.transaction_id,
+            "amount": p.total_price,
+            "method": p.method,
+            "date": p.date,
+        }
 
     class Meta:
         model = Order
         fields = [
             "id",
-            "client",
             "status",
-            "delivery_type",
-            "delivery_cost",
-            "delivery_date",
             "job_reference",
             "flashings",
             "created_at",
+            "delivery",
+            "payment_history",
+            "created_at",
         ]
-
-    read_only_fields = ["id", "status", "delivery_cost", "created_at", "is_complete"]
 
 
 class TemplateSerializer(serializers.ModelSerializer):

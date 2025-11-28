@@ -52,7 +52,7 @@ class Specification(models.Model):
                 (price_girth, mat_group.price_per_100girth, total_girth),
                 (price_crush, mat_group.price_per_crush_fold, crush_num),
                 (c),
-                sep="\n"
+                sep="\n",
             )
 
             return float(c) * float(self.length / 1000) * float(self.quantity)
@@ -166,7 +166,9 @@ class Cart(models.Model):
 
     @property
     def total_amount(self):
-        return round((self.flashings_cost + float(self.delivery_cost)) * (self.gst_ratio + 1), 2)
+        return round(
+            (self.flashings_cost + float(self.delivery_cost)) * (self.gst_ratio + 1), 2
+        )
 
     @property
     def is_complete(self):
@@ -221,20 +223,17 @@ class Order(models.Model):
         editable=False,
     )
 
-    class DeliveryTypeChoices(models.TextChoices):
-        DELIVERY = "delivery", "Delivery"
-        PICKUP = "pickup", "Pickup"
+    @property
+    def fulfillment(self):
+        if hasattr(self, "delivery"):
+            return self.delivery
+        if hasattr(self, "pickup"):
+            return self.pickup
+        return None
 
-    delivery_type = models.CharField(
-        max_length=20,
-        choices=DeliveryTypeChoices.choices,
-        default=DeliveryTypeChoices.DELIVERY,
-        editable=False,
-    )
-    delivery_cost = models.DecimalField(
-        max_digits=8, decimal_places=2, default=0, editable=False
-    )
-    delivery_date = models.DateField(editable=False)
+    @property
+    def delivery_type(self):
+        return self.fulfillment.type
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True, editable=False)
@@ -301,7 +300,7 @@ class Address(models.Model):
 
 
 class Template(models.Model):
-    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name='templates')
+    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name="templates")
     name = models.CharField(max_length=30)
 
     start_crush_fold = models.BooleanField(default=False)

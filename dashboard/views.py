@@ -124,7 +124,7 @@ class OrderView(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    http_method_names = ["get", "post", "patch", "options"]
+    http_method_names = ["get"]
 
     def get_queryset(self):
         return self.request.user.orders.all()
@@ -341,6 +341,11 @@ class CartView(viewsets.ViewSet):
                     )
 
             # TODO: Here first of all the cart should be empty. Then the stored flashings should be removed
+
+            
+            
+            # cart.delete()
+            # cart.save()
 
         except Exception as e:
             order_snapshot.delete()

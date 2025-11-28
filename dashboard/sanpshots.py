@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 import uuid
 
-from .utils import validate_nodes
+from .utils import validate_nodes, generate_six_digit_id
 from .models import Order
 
 class SpecificationSnapshot(models.Model):
@@ -43,7 +43,7 @@ class MaterialSnapshot(models.Model):
         if self.pk:
             raise ValueError("MaterialSnapshot is immutable and cannot be updated once created.")
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         return f"Material snapshot {self.id} for Flashing snapshot {self.flashing.id}"
 
@@ -96,6 +96,10 @@ class JobReferenceSnapshot(models.Model):
     recipient_name = models.CharField(max_length=50)
     recipient_phone = models.CharField(max_length=50)
     
+    @property
+    def full_address(self):
+        return f"{self.street_address}, {self.suburb}, {self.state} {self.postcode}, Australia"
+    
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValueError("JobReferenceSnapshot is immutable and cannot be updated once created.")
@@ -133,3 +137,85 @@ class PaymentSnapshot(models.Model):
 
     def __str__(self):
         return f"Payment {self.id} for Order {self.order.id}"
+    
+
+class DeliveryInfoSnapshot(models.Model):
+    id = models.CharField(primary_key=True, max_length=6, editable=False, unique=True)
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="delivery")
+
+    @property
+    def type(self):
+        return 'delivery'
+
+    cost = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0, editable=False
+    )
+
+    date = models.DateField(editable=False, null=True)
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = generate_six_digit_id()
+            while Order.objects.filter(id=self.id).exists():
+                self.id = generate_six_digit_id()
+
+        if self.id:
+            raise ValueError("DeliveryInfoSnapshot is immutable and cannot be updated once created.")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Delivery info snapshot {self.id} for order {self.order}"
+
+
+class DriverInfoSnapshot(models.Model):
+    id = models.CharField(primary_key=True, max_length=6, editable=False, unique=True)
+    delivery_info = models.OneToOneField(DeliveryInfoSnapshot, on_delete=models.CASCADE, related_name="driver")
+
+    name = models.CharField(max_length=50)
+    phone = models.PositiveIntegerField()
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = generate_six_digit_id()
+            while Order.objects.filter(id=self.id).exists():
+                self.id = generate_six_digit_id()
+
+        if self.id:
+            raise ValueError("DriverInfoSnapshot is immutable and cannot be updated once created.")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Delivery info snapshot {self.id} for delivery {self.delivery_info}"
+
+
+class PickupInfoSnapshot(models.Model):
+    id = models.CharField(primary_key=True, max_length=6, editable=False, unique=True)
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="pickup")
+
+    @property
+    def type(self):
+        return 'pickup'
+
+    date = models.DateField(editable=False, null=True)
+
+    @property
+    def factory_address(self):
+        return self.order.user.factory.full_address
+
+    @property
+    def factory_work_desc(self):
+        start = self.order.user.factory.working_hours_start
+        end = self.order.user.factory.working_hours_end
+
+        start_str = start.strftime("%-I:%M %p")
+        end_str = end.strftime("%-I:%M %p")
+
+        return f"Open: {start_str} – {end_str}"
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = generate_six_digit_id()
+            while Order.objects.filter(id=self.id).exists():
+                self.id = generate_six_digit_id()
+
+        super().save(*args, **kwargs)
