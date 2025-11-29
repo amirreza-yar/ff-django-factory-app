@@ -156,65 +156,90 @@ class CartView(viewsets.ViewSet):
         serializer = CartSerializer(cart, context={"request": request})
         return Response(serializer.data)
 
-    # @action(detail=False, methods=["post"], url_path="set-delivery-type")
-    # def set_delivery_type(self, request):
-        
-
-    @action(detail=False, methods=["post"], url_path="set-address")
-    def add_address(self, request):
+    @action(detail=False, methods=["post"], url_path="update")
+    def update_cart(self, request):
+        job_reference_id = request.data.get("job_reference_id")
         address_id = request.data.get("address_id")
-        if not address_id:
-            return Response({"error": "address_id is required"}, status=400)
-
-        cart = request.user.cart
-        try:
-            address = Address.objects.get(
-                id=address_id, job_reference__client=request.user
-            )
-            cart.address = address
-        except Address.DoesNotExist:
-            return Response({"error": "Address not found"}, status=404)
-
-        cart.save()
-        serializer = CartSerializer(cart, context={"request": request})
-        return Response(serializer.data)
-
-    @action(detail=False, methods=["post"], url_path="set-delivery-date")
-    def set_delivery_date(self, request):
-        cart = request.user.cart
-
         delivery_date_str = request.data.get("delivery_date")
+        delivery_type = request.data.get("delivery_type")
+
+        cart = request.user.cart
+
         if not delivery_date_str:
             return Response({"error": "delivery_date is required"}, status=400)
 
-        # Parse the date safely
+        if not (address_id or job_reference_id):
+            return Response(
+                {"error": "address_id or job_reference_id is required"}, status=400
+            )
+
+        if not delivery_type:
+            return Response({"error": "delivery_type is required"}, status=400)
+        elif delivery_type == "delivery" and not address_id:
+            return Response(
+                {"error": "for delivery the address_id is required"}, status=400
+            )
+        elif delivery_type == "pickup" and not job_reference_id:
+            return Response(
+                {"error": "for pickup the job_reference_id is required"}, status=400
+            )
+
+        # Setting delivery date
         try:
             delivery_date = datetime.strptime(delivery_date_str, "%Y-%m-%d").date()
+            if delivery_date < cart.estimated_delivery_date:
+                return Response(
+                    {
+                        "error": (
+                            f"delivery_date must be greater than or equal to "
+                            f"{cart.estimated_delivery_date}"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cart.delivery_date = delivery_date
         except ValueError:
             return Response(
                 {"error": "delivery_date must be a valid date in YYYY-MM-DD format"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Compare with estimated_delivery_date
-        if delivery_date < cart.estimated_delivery_date:
-            return Response(
-                {
-                    "error": (
-                        f"delivery_date must be greater than or equal to "
-                        f"{cart.estimated_delivery_date}"
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if delivery_type == "pickup":
+            try:
+                job_ref = JobReference.objects.get(
+                    id=job_reference_id, client=request.user
+                )
+                cart.delivery_type = 'pickup'
+                cart.job_reference_pickup = job_ref
+                cart.address = None
+            except Address.DoesNotExist:
+                return Response({"error": "JobReference not found"}, status=404)
 
-        # Update the cart
-        cart.delivery_date = delivery_date
+        elif delivery_type == "delivery":
+            try:
+                address = Address.objects.get(
+                    id=address_id, job_reference__client=request.user
+                )
+                cart.delivery_type = 'delivery'
+                cart.address = address
+                cart.job_reference_pickup = None
+            except Address.DoesNotExist:
+                return Response({"error": "Address not found"}, status=404)
+
+        # return Response(
+        #     {
+        #         "job_reference_id": job_reference_id,
+        #         "address_id": address_id,
+        #         "delivery_date_str": delivery_date_str,
+        #         "delivery_type": delivery_type,
+        #     },
+        #     status=200,
+        # )
         cart.save()
-
+        
         serializer = CartSerializer(cart, context={"request": request})
-
-        return Response(serializer.data)
+        return Response(serializer.data) 
 
     @action(detail=False, methods=["post"], url_path="pay")
     def pay(self, request):

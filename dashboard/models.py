@@ -152,6 +152,11 @@ class Cart(models.Model):
 
     stripe_session_id = models.CharField(max_length=100, unique=True, null=True)
 
+    address = models.ForeignKey("Address", on_delete=models.SET_NULL, null=True)
+    job_reference_pickup = models.ForeignKey(
+        "JobReference", on_delete=models.SET_NULL, null=True
+    )
+
     @property
     def delivery_method(self):
         if self.address:
@@ -175,11 +180,6 @@ class Cart(models.Model):
     def estimated_delivery_date(self):
         return two_days_from_now()
 
-    address = models.ForeignKey("Address", on_delete=models.SET_NULL, null=True)
-    job_reference_pickup = models.ForeignKey(
-        "JobReference", on_delete=models.SET_NULL, null=True
-    )
-
     @property
     def job_reference(self):
         if self.delivery_type == self.DeliveryTypeChoices.DELIVERY:
@@ -202,7 +202,7 @@ class Cart(models.Model):
     @property
     def total_amount(self):
         return round(
-            (self.flashings_cost + float(self.delivery_cost)) * (self.gst_ratio + 1), 2
+            (self.flashings_cost + float(self.delivery_cost or 0)) * (self.gst_ratio + 1), 2
         )
 
     @property
