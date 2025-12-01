@@ -156,9 +156,6 @@ class Cart(models.Model):
     stripe_session_id = models.CharField(max_length=100, unique=True, null=True)
 
     address = models.ForeignKey("Address", on_delete=models.SET_NULL, null=True)
-    job_reference_pickup = models.ForeignKey(
-        "JobReference", on_delete=models.SET_NULL, null=True
-    )
 
     @property
     def delivery_method(self):
@@ -185,14 +182,9 @@ class Cart(models.Model):
 
     @property
     def job_reference(self):
-        if self.delivery_type == self.DeliveryTypeChoices.DELIVERY:
-            if not self.address:
-                return None
-            return self.address.job_reference
-        elif self.delivery_type == self.DeliveryTypeChoices.PICKUP:
-            return self.job_reference_pickup
-        else:
+        if not self.address:
             return None
+        return self.address.job_reference
 
     @property
     def flashings_cost(self):

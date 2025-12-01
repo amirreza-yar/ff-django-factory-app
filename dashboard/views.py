@@ -165,24 +165,43 @@ class CartView(viewsets.ViewSet):
         # TODO Should recieve an address_id and should estimate delivery date
         # TODO Should return the estimated delivery date
         cart = request.user.cart
-        
+
         address_id = request.data.get("address_id")
-        
+
         try:
             address = Address.objects.get(
                 id=address_id, job_reference__client=request.user
             )
         except Address.DoesNotExist:
             return Response({"error": "Address not found"}, status=404)
-        
+
         distance = float(address.distance_to_factory)
         weight = float(cart.total_delivery_weight)
-        
+
         # print(distance, weight, address.best_delivery_method.estimate_delivery_days(distance, weight))
-        best_date = address.best_delivery_method.estimate_delivery_days(distance, weight) + 2
-        
-        
-        return Response({"estimated_delivery_date": (timezone.now() + timedelta(days=best_date)).date()}, status=200)
+        d_method = address.best_delivery_method
+        if d_method.method_type == "factory":
+            best_date = (
+                address.best_delivery_method.estimate_delivery_days(distance, weight) + 2
+            )
+
+            return Response(
+                {
+                    "estimated_delivery_date": (
+                        timezone.now() + timedelta(days=best_date)
+                    ).date()
+                },
+                status=200,
+            )
+        elif d_method.method_type == "freight":
+
+            return Response(
+                {
+                    "estimated_delivery_date": "freight"
+                },
+                status=200,
+            )
+            
 
     @action(detail=False, methods=["post"], url_path="update")
     def update_cart(self, request):
@@ -196,21 +215,18 @@ class CartView(viewsets.ViewSet):
         if not delivery_date_str:
             return Response({"error": "delivery_date is required"}, status=400)
 
-        if not (address_id or job_reference_id):
+        if not job_reference_id:
             return Response(
-                {"error": "address_id or job_reference_id is required"}, status=400
+                {"error": "job_reference_id is required"}, status=400
+            )
+        
+        if not address_id:
+            return Response(
+                {"error": "address_id is required"}, status=400
             )
 
         if not delivery_type:
             return Response({"error": "delivery_type is required"}, status=400)
-        elif delivery_type == "delivery" and not address_id:
-            return Response(
-                {"error": "for delivery the address_id is required"}, status=400
-            )
-        elif delivery_type == "pickup" and not job_reference_id:
-            return Response(
-                {"error": "for pickup the job_reference_id is required"}, status=400
-            )
 
         # Setting delivery date
         # TODO Should check the estimated delivery date based on delivery method (.estimate_dalivery_date method in methods model)

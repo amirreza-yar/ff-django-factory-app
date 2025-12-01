@@ -9,15 +9,17 @@ import math
 
 User = get_user_model()
 
+
 class StateChoices(models.TextChoices):
-        NSW = "NSW", "New South Wales"
-        VIC = "VIC", "Victoria"
-        QLD = "QLD", "Queensland"
-        WA = "WA", "Western Australia"
-        SA = "SA", "South Australia"
-        TAS = "TAS", "Tasmania"
-        ACT = "ACT", "Australian Capital Territory"
-        NT = "NT", "Northern Territory"
+    NSW = "NSW", "New South Wales"
+    VIC = "VIC", "Victoria"
+    QLD = "QLD", "Queensland"
+    WA = "WA", "Western Australia"
+    SA = "SA", "South Australia"
+    TAS = "TAS", "Tasmania"
+    ACT = "ACT", "Australian Capital Territory"
+    NT = "NT", "Northern Territory"
+
 
 class Factory(models.Model):
     # General
@@ -41,7 +43,7 @@ class Factory(models.Model):
     # Working hours
     working_hours_start = models.TimeField(blank=False, null=False)
     working_hours_end = models.TimeField(blank=False, null=False)
-    
+
     gst_ratio = models.FloatField(default=0.1)
 
     # Status
@@ -94,7 +96,9 @@ class Staff(models.Model):
     """Factory staff/operators model"""
 
     # id = models.UUIDField(primary_key=True, default=uuid.uuid5, editable=False)
-    factory = models.ForeignKey(Factory, on_delete=models.CASCADE, related_name="staff", editable=False)
+    factory = models.ForeignKey(
+        Factory, on_delete=models.CASCADE, related_name="staff", editable=False
+    )
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="staff_profile", editable=False
     )
@@ -162,9 +166,10 @@ class Material(models.Model):
     class VariantType(models.TextChoices):
         COLOR = "color", "Color"
         THICKNESS = "thickness", "Thickness"
-    
 
-    variant_type = models.CharField(max_length=10, choices=VariantType.choices, default=VariantType.COLOR)
+    variant_type = models.CharField(
+        max_length=10, choices=VariantType.choices, default=VariantType.COLOR
+    )
 
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -200,8 +205,9 @@ class MaterialGroup(models.Model):
     price_per_100girth = models.DecimalField(max_digits=10, decimal_places=2)
     price_per_crush_fold = models.DecimalField(max_digits=10, decimal_places=2)
     sample_weight = models.DecimalField(max_digits=10, decimal_places=2)
-    sample_weight_sq_meter = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
-
+    sample_weight_sq_meter = models.DecimalField(
+        max_digits=5, decimal_places=2, default=1.0
+    )
 
     def __str__(self):
         return f"{self.material.name} - Group #{self.id}"
@@ -216,7 +222,9 @@ class MaterialVariant(models.Model):
     value = models.CharField(max_length=100)
 
     def calculate_weight(self, girth, length):
-        sample = float(self.group.sample_weight) / float(self.group.sample_weight_sq_meter)
+        sample = float(self.group.sample_weight) / float(
+            self.group.sample_weight_sq_meter
+        )
 
         return sample * girth * length / 1000000
 
@@ -233,7 +241,7 @@ class DeliveryMethod(models.Model):
         Factory,
         on_delete=models.CASCADE,
         related_name="delivery_methods",
-        editable=False
+        editable=False,
     )
 
     class MethodType(models.TextChoices):
@@ -250,17 +258,16 @@ class DeliveryMethod(models.Model):
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
     priority = models.IntegerField(default=1)
-    
+
     base_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     cost_per_kg = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     cost_per_km = models.DecimalField(max_digits=6, decimal_places=2, default=0)
-    
+
     max_weight_kg = models.DecimalField(max_digits=10, decimal_places=2)
     max_distance_km = models.PositiveIntegerField()
 
-
     def estimate_delivery_days(self, *args):
-        if self.method_type == 'factory':
+        if self.method_type == "factory":
             try:
                 D_d, W_d = args
             except ValueError:
@@ -269,17 +276,25 @@ class DeliveryMethod(models.Model):
             D_ref = 1
             k = 0.1
 
-            result = (D_d / float(self.max_distance_km)) * (1 + k * (W_d / float(self.max_weight_kg))) * D_ref
+            result = (
+                (D_d / float(self.max_distance_km))
+                * (1 + k * (W_d / float(self.max_weight_kg)))
+                * D_ref
+            )
             return max(math.ceil(result), 1)
 
-        elif self.method_type == 'freight':
-            try:
-                (D_d,) = args
-            except ValueError:
-                raise ValueError("Freight delivery requires: D_d")
+        # elif self.method_type == "freight":
+        #     print(args)
+        #     try:
+        #         D_d, _ = args
+        #     except ValueError:
+        #         raise ValueError("Freight delivery requires: D_d")
 
-            result = D_d / self.max_distance_km * self.D_ref + self.extra_days
-            return max(math.ceil(result), 1)
+        #     D_ref = 1
+        #     k = 0.1
+
+        #     result = D_d / self.max_distance_km * self.D_ref + self.extra_days
+        #     return max(math.ceil(result), 1)
 
         else:
             raise ValueError(f"Unknown delivery method type: {self.method_type}")
@@ -291,7 +306,9 @@ class DeliveryMethod(models.Model):
         # This means that the model isn't saved to the database yet
         if self._state.adding:
             # Get the maximum display_id value from the database
-            last_priority = self.__class__.objects.all().aggregate(largest=models.Max('priority'))['largest']
+            last_priority = self.__class__.objects.all().aggregate(
+                largest=models.Max("priority")
+            )["largest"]
 
             # aggregate can return None! Check it first.
             # If it isn't none, just use the last ID specified (which should be the greatest) and add one to it
@@ -301,17 +318,13 @@ class DeliveryMethod(models.Model):
         super().save(*args, **kwargs)
 
     class Meta:
-        ordering = ['name', "priority"]
+        ordering = ["name", "priority"]
         constraints = [
-            models.UniqueConstraint(fields=['priority'], name='unique_priorities')
+            models.UniqueConstraint(fields=["priority"], name="unique_priorities")
         ]
 
     def __str__(self):
         return self.name
-
-
-
-
 
 
 # TODO: WHAT IS THIS??
