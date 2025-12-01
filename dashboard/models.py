@@ -78,6 +78,9 @@ class StoredFlashing(models.Model):
     material = models.ForeignKey(
         MaterialVariant, on_delete=models.PROTECT, related_name="ordered_flashings"
     )
+    
+    code = models.CharField(max_length=50)
+    position = models.CharField(max_length=50, null=True)
 
     # Flashing data/nodes properties here
     start_crush_fold = models.BooleanField(default=False)
@@ -266,7 +269,7 @@ class Order(models.Model):
         max_length=50,
         choices=OrderStatus.choices,
         default=OrderStatus.PENDING,
-        editable=False,
+        editable=True,
     )
 
     @property
@@ -278,7 +281,7 @@ class Order(models.Model):
         return None
 
     @property
-    def delivery_type(self):
+    def fulfillment_type(self):
         return self.fulfillment.type
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)

@@ -7,6 +7,8 @@ from .sanpshots import (
     MaterialSnapshot,
     JobReferenceSnapshot,
     SpecificationSnapshot,
+    DeliveryInfoSnapshot,
+    PickupInfoSnapshot
 )
 from .drafts import JobReferenceDraft
 
@@ -23,5 +25,7 @@ admin.site.register(PaymentSnapshot)
 admin.site.register(MaterialSnapshot)
 admin.site.register(JobReferenceSnapshot)
 admin.site.register(SpecificationSnapshot)
+admin.site.register(DeliveryInfoSnapshot)
+admin.site.register(PickupInfoSnapshot)
 
 admin.site.register(JobReferenceDraft)

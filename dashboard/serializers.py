@@ -76,6 +76,7 @@ class StoredFlashingSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoredFlashing
         fields = [
+            "code", "position", 
             "id",
             "material",
             "material_data",
@@ -87,6 +88,7 @@ class StoredFlashingSerializer(serializers.ModelSerializer):
             "specifications",
             "total_girth",
             "total_weight",
+            "total_cost",
             "is_complete",
         ]
         read_only_fields = ["id"]
@@ -164,6 +166,7 @@ class StoredFlashingSnapshotSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoredFlashingSnapshot
         fields = [
+            "code", "position", 
             "start_crush_fold",
             "end_crush_fold",
             "color_side_dir",
@@ -201,6 +204,7 @@ class AddressSerializer(serializers.ModelSerializer):
             "postcode",
             "recipient_name",
             "recipient_phone",
+            "full_address"
         ]
 
 
@@ -314,7 +318,7 @@ class OrderSerializer(serializers.ModelSerializer):
     )
 
     job_reference = serializers.SerializerMethodField()
-    delivery = serializers.SerializerMethodField()
+    fulfillment = serializers.SerializerMethodField()
     payment_history = serializers.SerializerMethodField()
 
     def get_job_reference(self, obj):
@@ -322,32 +326,59 @@ class OrderSerializer(serializers.ModelSerializer):
         return {
             "code": obj.job_reference.code,
             "project_name": j.project_name,
-            "address_title": j.title,
-            "full_address": j.full_address,
-            "recipient_name": j.recipient_name,
-            "recipient_phone": j.recipient_phone,
+            # "address_title": j.title,
+            # "full_address": j.full_address,
+            # "recipient_name": j.recipient_name,
+            # "recipient_phone": j.recipient_phone,
         }
 
-    def get_delivery(self, obj):
-        if obj.delivery_type == "delivery":
+    def get_fulfillment(self, obj):
+        if obj.fulfillment_type == "delivery":
+            delivery = obj.fulfillment
             return {
-                "type": obj.delivery_type,
-                "cost": obj.delivery_cost,
-                "date": obj.delivery_date,
+                "type": delivery.type,
+                "cost": delivery.cost,
+                "date": delivery.date,
+                "address": {
+                    "title": delivery.title,
+                    "street_address": delivery.street_address,
+                    "suburb": delivery.suburb,
+                    "state": delivery.state,
+                    "postcode": delivery.postcode,
+                    "distance_to_factory": delivery.distance_to_factory,
+                    "recipient_name": delivery.recipient_name,
+                    "recipient_phone": delivery.recipient_phone,
+                    "full_address": delivery.full_address,
+                },
+                "method": {
+                    "_dm_type": delivery._dm_type,
+                    "_dm_name": delivery._dm_name,
+                    "_dm_description": delivery._dm_description,
+                    "_dm_base_cost": delivery._dm_base_cost,
+                    "_dm_cost_per_kg": delivery._dm_cost_per_kg,
+                    "_dm_cost_per_km": delivery._dm_cost_per_km,
+                },
+                "driver": {
+                    "name": delivery.driver.name, 
+                    "phone": delivery.driver.phone
+                } if getattr(delivery, "driver", None) else None,
             }
-        elif obj.delivery_type == "delivery":
+        elif obj.fulfillment_type == "pickup":
             return {
-                "type": obj.delivery_type,
-                # "date": obj.delivery_date,
+                "type": obj.fulfillment_type,
+                "date": obj.delivery_date,
             }
 
     def get_payment_history(self, obj):
         p = obj.payment_history
         return {
             "transaction_id": p.transaction_id,
-            "amount": p.total_price,
             "method": p.method,
             "date": p.date,
+            "amount": p.total_amount,
+            "gst": p.gst_ratio,
+            "flashings_cost": p.flashings_cost,
+            "delivery_cost": p.delivery_cost,
         }
 
     class Meta:
@@ -355,10 +386,11 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "status",
+            "fulfillment_type",
             "job_reference",
             "flashings",
             "created_at",
-            "delivery",
+            "fulfillment",
             "payment_history",
             "created_at",
         ]

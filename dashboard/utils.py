@@ -4,6 +4,7 @@ from random import randint
 from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
+from django.db import models
 import requests
 import stripe
 
@@ -13,6 +14,16 @@ GEOCODE_URL = "https://api.openrouteservice.org/geocode/search"
 ROUTE_URL = "https://api.openrouteservice.org/v2/directions/driving-car"
 
 stripe.api_key = settings.STRIPE_KEY
+
+class AustraliaStateChoices(models.TextChoices):
+        NSW = "NSW", "New South Wales"
+        VIC = "VIC", "Victoria"
+        QLD = "QLD", "Queensland"
+        WA = "WA", "Western Australia"
+        SA = "SA", "South Australia"
+        TAS = "TAS", "Tasmania"
+        ACT = "ACT", "Australian Capital Territory"
+        NT = "NT", "Northern Territory"
 
 def create_stripe_session(amount, name="Test Order Pay"):
     DOMAIN = "http://localhost:8000"

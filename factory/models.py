@@ -269,7 +269,7 @@ class DeliveryMethod(models.Model):
             D_ref = 1
             k = 0.1
 
-            result = (D_d / self.max_distance_km) * (1 + k * (W_d / self.max_weight_kg)) * D_ref
+            result = (D_d / float(self.max_distance_km)) * (1 + k * (W_d / float(self.max_weight_kg))) * D_ref
             return max(math.ceil(result), 1)
 
         elif self.method_type == 'freight':
