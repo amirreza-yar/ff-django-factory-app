@@ -205,7 +205,6 @@ class CartView(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"], url_path="update")
     def update_cart(self, request):
-        job_reference_id = request.data.get("job_reference_id")
         address_id = request.data.get("address_id")
         delivery_date_str = request.data.get("delivery_date")
         delivery_type = request.data.get("delivery_type")
@@ -214,11 +213,6 @@ class CartView(viewsets.ViewSet):
 
         if not delivery_date_str:
             return Response({"error": "delivery_date is required"}, status=400)
-
-        if not job_reference_id:
-            return Response(
-                {"error": "job_reference_id is required"}, status=400
-            )
         
         if not address_id:
             return Response(
@@ -249,28 +243,15 @@ class CartView(viewsets.ViewSet):
                 {"error": "delivery_date must be a valid date in YYYY-MM-DD format"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        if delivery_type == "pickup":
-            try:
-                job_ref = JobReference.objects.get(
-                    id=job_reference_id, client=request.user
-                )
-                cart.delivery_type = "pickup"
-                cart.job_reference_pickup = job_ref
-                cart.address = None
-            except Address.DoesNotExist:
-                return Response({"error": "JobReference not found"}, status=404)
-
-        elif delivery_type == "delivery":
-            try:
-                address = Address.objects.get(
-                    id=address_id, job_reference__client=request.user
-                )
-                cart.delivery_type = "delivery"
-                cart.address = address
-                cart.job_reference_pickup = None
-            except Address.DoesNotExist:
-                return Response({"error": "Address not found"}, status=404)
+            
+        try:
+            address = Address.objects.get(
+                id=address_id, job_reference__client=request.user
+            )
+            cart.delivery_type = "delivery"
+            cart.address = address
+        except Address.DoesNotExist:
+            return Response({"error": "Address not found"}, status=404)
 
         # return Response(
         #     {

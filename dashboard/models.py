@@ -159,14 +159,13 @@ class Cart(models.Model):
 
     @property
     def delivery_method(self):
-        if self.address:
-            return self.address.best_delivery_method
-        else:
-            return None
+        if self.delivery_type == self.DeliveryTypeChoices.DELIVERY:
+            self.address.best_delivery_method
+        else: return None
 
     @property
     def delivery_cost(self):
-        if self.address:
+        if self.delivery_type == self.DeliveryTypeChoices.DELIVERY:
             d = self.delivery_method
             return (
                 float(d.base_cost)
@@ -214,9 +213,6 @@ class Cart(models.Model):
             return False
 
         if not self.delivery_date:
-            return False
-
-        if not self.job_reference:
             return False
 
         if self.flashings_cost <= 0:
